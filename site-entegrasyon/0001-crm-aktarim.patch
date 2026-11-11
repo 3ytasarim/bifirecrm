@@ -1,0 +1,312 @@
+From 2b10bb90980a54f845d130dd8453c84976a6e543 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Rauf=20Onur=20=C3=87ullu?= <3ytasarim@gmail.com>
+Date: Wed, 11 Nov 2026 23:11:23 +0300
+Subject: [PATCH] feat: form taleplerini Bifire CRM'e imzali aktarim
+ (varsayilan kapali)
+
+- src/lib/crm/forward.ts: HMAC-SHA256 imza (zaman damgasi + nonce), yanittan
+  sonra after() ile gonderim, mutabakat ve baglanti testi
+- scripts/crm-forward.ts: npm run crm:forward [--since=72 | --dry-run | --check]
+- iletisim/teklif/showroom ve ozel tasarim formlari: safeIntakeRequest
+  sonrasina forwardToCrmAfterResponse
+- CRM_FORWARD_ENABLED=false varsayilan; site DB semasi degismedi
+---
+ .env.example                                  |   9 +
+ package.json                                  |   3 +-
+ scripts/crm-forward.ts                        |  40 +++++
+ src/app/(site)/actions.ts                     |   3 +
+ .../(site)/mekaniniza-ozel-tasarim/actions.ts |   3 +
+ src/lib/crm/forward.ts                        | 161 ++++++++++++++++++
+ 6 files changed, 218 insertions(+), 1 deletion(-)
+ create mode 100644 scripts/crm-forward.ts
+ create mode 100644 src/lib/crm/forward.ts
+
+diff --git a/.env.example b/.env.example
+index 53e547f..d40a2d8 100644
+--- a/.env.example
++++ b/.env.example
+@@ -25,3 +25,12 @@ ADMIN_SEED_PASSWORD=""
+ 
+ # CRM dış kanal kayıt kapısı (POST /api/v1/crm/leads, Authorization: Bearer ...). En az 24 karakter rastgele değer; boşsa kapalı.
+ CRM_INTAKE_TOKEN=
++
++# ─── Bifire CRM aktarımı (crm.bifiresomine.com) ────────────────────────────
++# Varsayılan KAPALI. "true" olunca her form talebi (site DB'ye yazıldıktan sonra) CRM'e imzalı olarak iletilir.
++# Kapatmak için false yapıp süreci yeniden başlatın (pm2 restart <site> --update-env); rebuild gerekmez.
++CRM_FORWARD_ENABLED=false
++# CRM taban adresi (production'da https zorunlu), ör. https://crm.bifiresomine.com
++CRM_INTAKE_URL=
++# CRM'deki WEBSITE_HMAC_SECRET ile AYNI değer, en az 32 karakter rastgele (openssl rand -base64 48).
++CRM_WEBSITE_HMAC_SECRET=
+diff --git a/package.json b/package.json
+index 4d97338..1d5bb4e 100644
+--- a/package.json
++++ b/package.json
+@@ -16,7 +16,8 @@
+     "demo:clear": "tsx scripts/demo-clear.ts",
+     "postinstall": "prisma generate",
+     "brand:assets": "tsx scripts/generate-brand-assets.ts",
+-    "areas:names": "tsx scripts/generate-area-names.ts"
++    "areas:names": "tsx scripts/generate-area-names.ts",
++    "crm:forward": "tsx --conditions=react-server scripts/crm-forward.ts"
+   },
+   "dependencies": {
+     "@node-rs/argon2": "^2.2.1",
+diff --git a/scripts/crm-forward.ts b/scripts/crm-forward.ts
+new file mode 100644
+index 0000000..e80e237
+--- /dev/null
++++ b/scripts/crm-forward.ts
+@@ -0,0 +1,40 @@
++/**
++ * Site → CRM mutabakatı (kaçan aktarımları yeniden gönderir). Bayrak kapalıysa hiçbir şey yapmaz.
++ *
++ *   npm run crm:forward                    → son 72 saat, eksikleri gönder
++ *   npm run crm:forward -- --since=24      → son 24 saat
++ *   npm run crm:forward -- --dry-run       → yalnız say, gönderme
++ *   npm run crm:forward -- --check         → yalnız bağlantı/sır testi (kişisel veri gönderilmez)
++ *
++ * Sunucuda cron: every 10 min → cd /var/www/bifire && npm run crm:forward >> logs/crm-forward.log 2>&1
++ * Çıktıda kişisel veri yoktur (yalnız sayılar ve talep kimlikleri).
++ */
++import "dotenv/config";
++import { prisma } from "@/lib/db";
++import { checkCrmConnection, reconcileWithCrm } from "@/lib/crm/forward";
++
++async function main() {
++  if (process.argv.includes("--check")) {
++    const c = await checkCrmConnection();
++    console.log(c.enabled ? `[crm-forward] bağlantı ${c.ok ? "BAŞARILI" : "BAŞARISIZ"} (${c.status ?? "-"}${c.error ? " " + c.error : ""})` : "[crm-forward] kapalı (CRM_FORWARD_ENABLED != true).");
++    if (c.enabled && !c.ok) process.exitCode = 1;
++    return;
++  }
++  const sinceArg = process.argv.find((a) => a.startsWith("--since="));
++  const sinceHours = Math.min(Math.max(Number(sinceArg?.split("=")[1] ?? 72) || 72, 1), 24 * 30);
++  const dryRun = process.argv.includes("--dry-run");
++  const r = await reconcileWithCrm({ sinceHours, dryRun });
++  if (!r.enabled) {
++    console.log("[crm-forward] kapalı (CRM_FORWARD_ENABLED != true) — işlem yapılmadı.");
++    return;
++  }
++  console.log(`[crm-forward] ${new Date().toISOString()} son ${sinceHours} sa: kontrol=${r.checked} eksik=${r.missing} gönderilen=${r.sent} hata=${r.failed}${dryRun ? " (dry-run)" : ""}`);
++  if (r.failed) process.exitCode = 1;
++}
++
++main()
++  .catch((e) => {
++    console.error("[crm-forward] hata:", e instanceof Error ? e.message : e);
++    process.exitCode = 1;
++  })
++  .finally(() => prisma.$disconnect());
+diff --git a/src/app/(site)/actions.ts b/src/app/(site)/actions.ts
+index 20e3498..5be3a58 100644
+--- a/src/app/(site)/actions.ts
++++ b/src/app/(site)/actions.ts
+@@ -3,6 +3,7 @@
+ import { z } from "zod";
+ import { prisma } from "@/lib/db";
+ import { safeIntakeRequest } from "@/lib/crm/intake";
++import { forwardToCrmAfterResponse } from "@/lib/crm/forward";
+ import { getIpHash } from "@/lib/request-meta";
+ import { isFormRateLimited } from "@/lib/rate-limit";
+ import { PROJECT_STAGES, PROJECT_TIMELINES, PROJECT_TOPICS } from "@/content/company";
+@@ -124,6 +125,8 @@ export async function submitRequest(_prev: RequestFormState, formData: FormData)
+     });
+     // CRM: müşteri eşleştirme + proje + ilk dönüş görevi (başarısız olsa da form akışı bozulmaz).
+     await safeIntakeRequest(created.id);
++    // Bifire CRM'e aktarım: CRM_FORWARD_ENABLED=true değilse hiçbir şey yapmaz; yanıttan sonra çalışır.
++    forwardToCrmAfterResponse(created.id);
+   } catch {
+     return { status: "error", message: "Talebiniz şu an kaydedilemedi. Lütfen tekrar deneyin ya da telefonla ulaşın.", values };
+   }
+diff --git a/src/app/(site)/mekaniniza-ozel-tasarim/actions.ts b/src/app/(site)/mekaniniza-ozel-tasarim/actions.ts
+index 5da1560..4ff92b1 100644
+--- a/src/app/(site)/mekaniniza-ozel-tasarim/actions.ts
++++ b/src/app/(site)/mekaniniza-ozel-tasarim/actions.ts
+@@ -7,6 +7,7 @@ import { DESIGN_FLUE, DESIGN_PREFERENCES } from "@/content/design-service";
+ import { DISTRICT_OPTIONS } from "@/content/service-areas/names";
+ import { prisma } from "@/lib/db";
+ import { safeIntakeRequest } from "@/lib/crm/intake";
++import { forwardToCrmAfterResponse } from "@/lib/crm/forward";
+ import { isFormRateLimited } from "@/lib/rate-limit";
+ import { getIpHash } from "@/lib/request-meta";
+ import { privateStorage } from "@/lib/storage/private";
+@@ -164,6 +165,8 @@ export async function submitDesignRequest(_prev: DesignFormState, formData: Form
+     });
+     // CRM: müşteri eşleştirme + proje + ilk dönüş görevi (başarısız olsa da form akışı bozulmaz).
+     await safeIntakeRequest(created.id);
++    // Bifire CRM'e aktarım: CRM_FORWARD_ENABLED=true değilse hiçbir şey yapmaz; yanıttan sonra çalışır.
++    forwardToCrmAfterResponse(created.id);
+   } catch {
+     if (storedKey) await privateStorage.remove(storedKey);
+     return { status: "error", message: "Talebiniz şu an kaydedilemedi. Lütfen tekrar deneyin ya da telefonla ulaşın.", values };
+diff --git a/src/lib/crm/forward.ts b/src/lib/crm/forward.ts
+new file mode 100644
+index 0000000..b473ca4
+--- /dev/null
++++ b/src/lib/crm/forward.ts
+@@ -0,0 +1,161 @@
++import "server-only";
++import { createHmac, randomBytes } from "node:crypto";
++import { after } from "next/server";
++import { prisma } from "@/lib/db";
++import { privateStorage } from "@/lib/storage/private";
++
++/**
++ * Site → Bifire CRM (crm.bifiresomine.com) aktarımı.
++ *
++ * Güvenlik/geri alınabilirlik:
++ *  - Varsayılan KAPALI: CRM_FORWARD_ENABLED=true olmadıkça hiçbir istek yapılmaz; site davranışı birebir aynı kalır.
++ *  - Talep önce sitenin kendi DB'sine yazılır (ContactRequest = tek gerçek kaynak). Aktarım yanıttan SONRA
++ *    yapılır (`after`), ziyaretçi beklemez; CRM kapalı/yavaş olsa da form akışı bozulmaz.
++ *  - Kaçan aktarımlar `npm run crm:forward` (cron) ile mutabakatla yeniden gönderilir; CRM submissionId ile
++ *    tekilleştirir, aynı talep iki kez kayıt açmaz.
++ *  - İstekler HMAC-SHA256 ile imzalanır (zaman damgası + tek kullanımlık nonce). Sır yalnız sunucuda (.env).
++ *
++ * İmza (CRM'deki src/lib/integrations/signature.ts ile aynı):
++ *   X-Bifire-Signature = "v1=" + hex(HMAC-SHA256(CRM_WEBSITE_HMAC_SECRET, `${timestamp}.${nonce}.${rawBody}`))
++ */
++
++type Config = { baseUrl: string; secret: string };
++
++export function crmForwardConfig(): Config | null {
++  if (process.env.CRM_FORWARD_ENABLED !== "true") return null;
++  const baseUrl = (process.env.CRM_INTAKE_URL ?? "").replace(/\/+$/, "");
++  const secret = process.env.CRM_WEBSITE_HMAC_SECRET ?? "";
++  if (!/^https?:\/\//.test(baseUrl) || secret.length < 32) {
++    console.error("[crm-forward] CRM_FORWARD_ENABLED=true ama CRM_INTAKE_URL / CRM_WEBSITE_HMAC_SECRET eksik veya geçersiz.");
++    return null;
++  }
++  if (process.env.NODE_ENV === "production" && !baseUrl.startsWith("https://")) {
++    console.error("[crm-forward] Production'da CRM_INTAKE_URL https olmalı; aktarım yapılmadı.");
++    return null;
++  }
++  return { baseUrl, secret };
++}
++
++export type ForwardResult = { ok: true; duplicate: boolean } | { ok: false; status?: number; error: string };
++
++async function signedPost(cfg: Config, path: string, body: unknown, timeoutMs: number): Promise<{ status: number; json: unknown }> {
++  const raw = JSON.stringify(body);
++  const timestamp = String(Math.floor(Date.now() / 1000));
++  const nonce = randomBytes(18).toString("base64url");
++  const signature = "v1=" + createHmac("sha256", cfg.secret).update(`${timestamp}.${nonce}.${raw}`).digest("hex");
++  const res = await fetch(cfg.baseUrl + path, {
++    method: "POST",
++    headers: { "Content-Type": "application/json", "X-Bifire-Timestamp": timestamp, "X-Bifire-Nonce": nonce, "X-Bifire-Signature": signature },
++    body: raw,
++    signal: AbortSignal.timeout(timeoutMs),
++    cache: "no-store",
++    redirect: "error",
++  });
++  const json = await res.json().catch(() => null);
++  return { status: res.status, json };
++}
++
++/** ContactRequest → CRM yükü (sürüm 1). Fotoğraflar özel depodan okunur ve base64 olarak eklenir. */
++async function buildPayload(requestId: string) {
++  const r = await prisma.contactRequest.findUnique({ where: { id: requestId }, include: { attachments: true } });
++  if (!r) return null;
++  const attachments: { name: string; mimeType: string; dataBase64: string }[] = [];
++  for (const a of r.attachments.slice(0, 3)) {
++    const data = await privateStorage.read(a.storageKey);
++    if (data) attachments.push({ name: a.originalName || "mekan-fotografi.jpg", mimeType: a.mimeType, dataBase64: data.toString("base64") });
++  }
++  return {
++    version: 1 as const,
++    submissionId: r.id,
++    formType: r.type,
++    submittedAt: r.createdAt.toISOString(),
++    name: r.name,
++    phone: r.phone,
++    email: r.email,
++    message: r.message,
++    district: r.district,
++    topic: r.topic,
++    projectStage: r.projectStage,
++    timeline: r.timeline,
++    selection: r.selection,
++    productName: r.productName,
++    categoryName: r.categoryName,
++    sourcePath: r.sourcePath,
++    consent: { kvkkAcknowledged: r.kvkkConsent, consentAt: r.consentAt?.toISOString() ?? null, noticeVersion: null },
++    attachments,
++  };
++}
++
++/** Tek talebi CRM'e gönderir. Asla hata fırlatmaz; sonucu döner (kişisel veri loglanmaz). */
++export async function forwardRequestToCrm(requestId: string, cfg = crmForwardConfig()): Promise<ForwardResult> {
++  if (!cfg) return { ok: false, error: "disabled" };
++  try {
++    const payload = await buildPayload(requestId);
++    if (!payload) return { ok: false, error: "not_found" };
++    const { status, json } = await signedPost(cfg, "/api/v1/intake/website", payload, 20_000);
++    if (status === 200 || status === 202) return { ok: true, duplicate: Boolean((json as { duplicate?: boolean } | null)?.duplicate) };
++    const code = (json as { error?: { code?: string } } | null)?.error?.code ?? "http_error";
++    return { ok: false, status, error: code };
++  } catch (e) {
++    return { ok: false, error: e instanceof Error ? e.name : "network_error" };
++  }
++}
++
++/**
++ * Form action'ından çağrılır: yanıt ziyaretçiye gittikten sonra aktarır. Bayrak kapalıysa hiçbir şey yapmaz.
++ * Başarısızlık yalnız loglanır; kaçan talep cron mutabakatıyla (scripts/crm-forward.ts) yeniden gönderilir.
++ */
++export function forwardToCrmAfterResponse(requestId: string) {
++  const cfg = crmForwardConfig();
++  if (!cfg) return;
++  try {
++    after(async () => {
++      const r = await forwardRequestToCrm(requestId, cfg);
++      if (!r.ok) console.error(`[crm-forward] ${requestId} aktarılamadı (${r.status ?? "-"} ${r.error}); mutabakat yeniden deneyecek.`);
++    });
++  } catch {
++    // İstek bağlamı dışında çağrıldıysa (olmamalı) sessizce geç; mutabakat yakalar.
++  }
++}
++
++/** Bağlantı testi: boş kimlik listesiyle imzalı mutabakat isteği. Sır eşleşmiyorsa CRM 401 döner. Kişisel veri gönderilmez. */
++export async function checkCrmConnection(): Promise<{ enabled: boolean; ok: boolean; status?: number; error?: string }> {
++  const cfg = crmForwardConfig();
++  if (!cfg) return { enabled: false, ok: false };
++  try {
++    const { status, json } = await signedPost(cfg, "/api/v1/intake/website/status", { submissionIds: [] }, 10_000);
++    return { enabled: true, ok: status === 200, status, error: (json as { error?: { code?: string } } | null)?.error?.code };
++  } catch (e) {
++    return { enabled: true, ok: false, error: e instanceof Error ? e.name : "network_error" };
++  }
++}
++
++/**
++ * Mutabakat: son `sinceHours` saatteki talepleri CRM'e sorar, eksik olanları gönderir.
++ * Cron ile (ör. 10 dakikada bir) çalıştırılır. dryRun: yalnız sayar, göndermez.
++ */
++export async function reconcileWithCrm(opts: { sinceHours: number; dryRun?: boolean }) {
++  const cfg = crmForwardConfig();
++  if (!cfg) return { enabled: false as const };
++  const since = new Date(Date.now() - opts.sinceHours * 3600_000);
++  const rows = await prisma.contactRequest.findMany({ where: { createdAt: { gte: since } }, select: { id: true }, orderBy: { createdAt: "asc" }, take: 500 });
++  const ids = rows.map((r) => r.id);
++  if (!ids.length) return { enabled: true as const, checked: 0, missing: 0, sent: 0, failed: 0 };
++  const { status, json } = await signedPost(cfg, "/api/v1/intake/website/status", { submissionIds: ids }, 15_000);
++  if (status !== 200) throw new Error(`CRM mutabakat yanıtı ${status} ${(json as { error?: { code?: string } } | null)?.error?.code ?? ""}`.trim());
++  const received = new Set((json as { received?: string[] }).received ?? []);
++  const missing = ids.filter((id) => !received.has(id));
++  let sent = 0;
++  let failed = 0;
++  if (!opts.dryRun) {
++    for (const id of missing) {
++      const r = await forwardRequestToCrm(id, cfg);
++      if (r.ok) sent++;
++      else {
++        failed++;
++        console.error(`[crm-forward] ${id}: ${r.status ?? "-"} ${r.error}`);
++      }
++    }
++  }
++  return { enabled: true as const, checked: ids.length, missing: missing.length, sent, failed };
++}
+-- 
+2.55.0.windows.3
+
