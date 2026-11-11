@@ -7,6 +7,7 @@ const eslintConfig = defineConfig([
   ...nextTs,
   // Override default ignores of eslint-config-next.
   globalIgnores([
+    "site-entegrasyon/**", // site reposundaki değişikliğin kopyası, CRM kodu değil
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
