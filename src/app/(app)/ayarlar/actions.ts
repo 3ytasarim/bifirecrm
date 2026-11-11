@@ -12,6 +12,7 @@ import { getSession, revokeAllSessions } from "@/lib/auth/session";
 import { hashPassword, passwordSchema, verifyPassword } from "@/lib/auth/password";
 import { generateTotpSecret, verifyTotp } from "@/lib/auth/totp";
 import { rateLimit } from "@/lib/rate-limit";
+import { QUOTE_PROFILE_SETTING } from "@/lib/services/quotes";
 
 const NO_SESSION: ActionState = { ok: false, message: "Oturumunuz sona erdi. Lütfen yeniden giriş yapın." };
 
@@ -106,4 +107,24 @@ export async function saveWebsiteOwner(fd: FormData) {
   }
   await audit({ actorId: actor.id, action: "setting_changed", entityType: "setting", entityId: "intake.website_owner_id", before: { value: before?.value ?? null }, after: { value: raw || null } });
   revalidatePath("/ayarlar");
+}
+
+const quoteProfileSchema = z.object({
+  header: z.string().trim().min(1, "Firma bilgisi yazın.").max(1000),
+  terms: z.string().trim().max(8000),
+  validityDays: z.coerce.number().int("Tam sayı girin.").min(1, "En az 1 gün.").max(365, "En fazla 365 gün."),
+});
+
+/** Teklif PDF anteti, varsayılan şartlar ve geçerlilik süresi. Yalnız yeni teklif/sürümlere uygulanır. */
+export async function saveQuoteProfile(_: ActionState, fd: FormData): Promise<ActionState> {
+  const actor = await getActorOrNull();
+  if (!actor) return NO_SESSION;
+  if (!actor.perms.has("settings.manage")) return { ok: false, message: "Bu işlem için yetkiniz yok." };
+  const parsed = quoteProfileSchema.safeParse({ header: fd.get("header") ?? "", terms: fd.get("terms") ?? "", validityDays: fd.get("validityDays") ?? "" });
+  if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error), message: "Lütfen alanları kontrol edin." };
+  const before = await prisma.setting.findUnique({ where: { key: QUOTE_PROFILE_SETTING } });
+  await prisma.setting.upsert({ where: { key: QUOTE_PROFILE_SETTING }, create: { key: QUOTE_PROFILE_SETTING, value: parsed.data, updatedById: actor.id }, update: { value: parsed.data, updatedById: actor.id } });
+  await audit({ actorId: actor.id, action: "setting_changed", entityType: "setting", entityId: QUOTE_PROFILE_SETTING, before: { value: before?.value ?? null }, after: { value: parsed.data } });
+  revalidatePath("/ayarlar");
+  return { ok: true, message: "Teklif bilgileri kaydedildi." };
 }

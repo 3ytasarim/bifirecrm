@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { buttonClass } from "@/components/ui/styles";
 import { notFound } from "next/navigation";
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 import { prisma } from "@/lib/db";
@@ -69,6 +70,13 @@ export default async function ProjectDetail({ params, searchParams }: { params: 
             ) : null}
             <Badge tone="info">{PROJECT_STAGE_LABELS[p.stage]}</Badge>
           </span>
+        }
+        actions={
+          actor.perms.has("calendar.manage") ? (
+            <Link href={`/takvim/yeni?proje=${id}&tur=INSTALLATION`} className={buttonClass("secondary")}>
+              Montaj / randevu planla
+            </Link>
+          ) : null
         }
       />
       <Tabs

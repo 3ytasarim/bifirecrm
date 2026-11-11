@@ -8,20 +8,10 @@ const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
   { key: "X-Robots-Tag", value: "noindex, nofollow" },
   {
-    // Next.js çalışma zamanı satır içi script kullandığı için script-src 'unsafe-inline' gerekli (nonce'lı CSP Faz 3 sertleştirme maddesi).
+    // Sayfaların asıl CSP'si proxy.ts'te (her istekte nonce). Bu taban politika script kısıtlamaz (nonce'lu politikayla
+    // çakışmasın diye); proxy dışında kalan yanıtlarda (statik dosyalar) çerçeveleme/base/object korumasını sağlar.
     key: "Content-Security-Policy",
-    value: [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'" + (process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""),
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob:",
-      "font-src 'self'",
-      "connect-src 'self'",
-      "frame-ancestors 'none'",
-      "form-action 'self'",
-      "base-uri 'self'",
-      "object-src 'none'",
-    ].join("; "),
+    value: ["frame-ancestors 'none'", "base-uri 'self'", "object-src 'none'", "form-action 'self'"].join("; "),
   },
 ];
 
@@ -31,7 +21,9 @@ const nextConfig: NextConfig = {
     // Dosya yükleme sınırı (MAX_UPLOAD_MB × en fazla 10 dosya için pay). Nginx client_max_body_size ile uyumlu tutulmalı.
     serverActions: { bodySizeLimit: "60mb" },
   },
-  serverExternalPackages: ["@node-rs/argon2", "sharp"],
+  serverExternalPackages: ["@node-rs/argon2", "sharp", "pdfkit"],
+  // next/image kullanılmıyor; görüntü optimizasyon uç noktası kapalı (saldırı yüzeyi olmasın).
+  images: { unoptimized: true },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

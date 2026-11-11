@@ -41,9 +41,22 @@ Rapor: `FAZ0_KESIF.md`, model/API: `ERD.md`. Canlı siteye dokunulmadı.
   - [x] otomatik sorumlu ayarı → fırsat/görev atanır, bildirim gider
   - [ ] gerçek `ContactRequest` ile uçtan uca gönderim — site `.env` canlı DB'ye bağlı olabileceği için yapılmadı; staging/canlıda bayrak açılırken yapılacak (`DEPLOY.md` Faz 2 adımları)
 
-## Faz 3 — Satış araçları ⬜
+## Faz 3 — Satış araçları ✅ kod hazır (2026-11-12)
 Takvim (randevu + keşif), teklif oluşturma (kalemler, KDV, PDF, onay akışı, T- numarası), mesaj şablonları, raporlar (kaynak/dönüşüm/kayıp nedeni/süre), nonce'lı CSP.
 - **Kabul:** teklif PDF'i doğru tutarlar; onay olmadan "gönderildi"ye geçilmez; rapor sayıları DB sorgularıyla birebir.
+- **Teklif:** `lib/quotes/calc.ts` kayan nokta kullanmaz (BigInt; miktar ×1000, tutar/oran ×100, satır bazında yarım yukarı). Ekran, sunucu ve PDF aynı fonksiyonu kullanır; PDF üretilirken toplamlar kalemlerden yeniden hesaplanır, DB toplamı tutmazsa PDF üretilmez. Durumlar: Taslak → Onay bekliyor → Onaylandı → Gönderildi → Kabul/Ret; ret gerekçesi zorunlu, hazırlayan kendi teklifini onaylayamaz (SUPER_ADMIN hariç), yalnız taslak düzenlenir, sonrası “Revize et” (yeni sürüm). “Gönderildi”de PDF özel depoya bir kez yazılır, fırsat dosyalarına eklenir ve sonra hep o dosya verilir. **Otomatik e-posta/WhatsApp gönderimi yok** (kanal bağlı değil). Antet/şart/geçerlilik: Ayarlar › Teklif bilgileri.
+- **Takvim:** haftalık görünüm + zamanı bekleyen talepler; müşteri/fırsat/proje bağlantısı (aynı müşteri kontrolü), aynı kişiye çakışan planlı randevu engeli (bilinçli “çakışmaya rağmen kaydet”), keşif/showroom onayında fırsat yalnız ileri taşınır.
+- **Şablonlar:** yalnız tanımlı `{{değişken}}`ler (bilinmeyen reddedilir); müşteri için doldurulmuş önizleme + kopyala; eksik değerler işaretlenir. Gönderim yok.
+- **Raporlar:** tanımlar sayfada yazılı; ham SQL (`services/reports.ts`).
+- **CSP:** `proxy.ts` her istekte nonce üretir; `script-src 'self' 'nonce-…' 'strict-dynamic'` (prod'da `unsafe-inline`/`unsafe-eval` yok). Stil için `'unsafe-inline'` kalır (style öznitelikleri).
+- Kabul testleri (yerel dev, QA verisi, sonra silindi):
+  - [x] `scripts/qa-quotes.ts`: elle hesaplanan toplamlar DB'yle aynı; taslak/onay bekleyen teklif “gönderildi” yapılamaz; satışçı onaylayamaz; gerekçesiz ret olmaz; hazırlayan kendi teklifini onaylayamaz; kurcalanmış DB toplamıyla PDF üretilmez; revize eski sürümü değiştirmez
+  - [x] PDF görsel kontrol: Türkçe karakterler, KDV dökümü, çok sayfa (45 kalem) + filigran, boş sayfa yok
+  - [x] tarayıcı: “45.000” binlik olarak kaydedildi; canlı toplam = DB = PDF (100.775,55 ₺); onay → gönderildi → aynı PDF tekrar indirildiğinde bayt bayt aynı; fırsat “Teklif gönderildi”
+  - [x] `scripts/qa-reports.ts`: bilinen QA verisinde kaynak/huni/kayıp/aşama süresi/ilk temas/teklif rakamları elle hesapla aynı; filtresiz rapor bağımsız ORM sayımlarıyla aynı
+  - [x] çakışan randevu engellendi (form verisi korundu); şablonda `{{adi}}` reddedildi; önizleme gerçek kayıtlardan doldu
+  - [x] satış rolü: raporlar → /yetkisiz (veri HTML'e sızmıyor), şablon düzenleme yok; CSP başlığında nonce, konsolda ihlal yok
+  - [x] kalite kapıları: `lint`, `tsc`, 49 birim testi, `next build`
 
 ## Faz 4 — Kanal entegrasyonları ⬜ (hesap/token gerekir)
 Meta Lead Ads, Instagram DM, WhatsApp Cloud API, Google Calendar.

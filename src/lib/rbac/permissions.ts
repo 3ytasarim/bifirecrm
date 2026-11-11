@@ -29,6 +29,15 @@ export const PERMISSIONS = {
   "files.upload": "Dosya yükle",
   "files.download": "Dosya indir",
   "files.delete": "Dosya sil",
+  "quotes.view": "Teklifleri görüntüle (erişebildiği fırsat/müşteri)",
+  "quotes.create": "Teklif hazırla / düzenle",
+  "quotes.approve": "Teklifi onayla / reddet (gönderim öncesi)",
+  "quotes.send": "Onaylı teklifi gönderildi olarak işaretle / müşteri yanıtını gir",
+  "calendar.view": "Takvimi görüntüle (kendine atanmış)",
+  "calendar.view_all": "Tüm randevuları görüntüle",
+  "calendar.manage": "Randevu / keşif oluştur ve güncelle",
+  "templates.manage": "Mesaj şablonlarını yönet",
+  "reports.view": "Raporları görüntüle",
   "leads.view": "Gelen talepleri görüntüle",
   "leads.process": "Talepleri işle (fırsata dönüştür / reddet)",
   "data.export": "Veri dışa aktar (CSV)",
@@ -63,17 +72,21 @@ const sales: Permission[] = [
   "projects.view", "projects.create",
   "tasks.manage", "notes.write", "files.upload", "files.download",
   "leads.view", "leads.process",
+  "quotes.view", "quotes.create", "quotes.send",
+  "calendar.view", "calendar.manage",
 ];
 
 const technical: Permission[] = [
   "contacts.view", "opportunities.view",
   "projects.view", "projects.edit", "projects.approve_dates",
   "tasks.manage", "notes.write", "files.upload", "files.download",
+  "quotes.view", "calendar.view", "calendar.manage",
 ];
 
 const production: Permission[] = [
   "contacts.view", "projects.view", "projects.edit",
   "tasks.manage", "notes.write", "files.upload", "files.download",
+  "calendar.view", "calendar.manage",
 ];
 
 const readOnly: Permission[] = [
@@ -81,6 +94,7 @@ const readOnly: Permission[] = [
   "opportunities.view", "opportunities.view_all",
   "projects.view", "projects.view_all",
   "tasks.view_all", "leads.view", "files.download",
+  "quotes.view", "calendar.view", "calendar.view_all", "reports.view",
 ];
 
 const manager: Permission[] = ALL_PERMISSIONS.filter((p) => !LOCKED_PERMISSIONS.includes(p) && p !== "settings.manage");

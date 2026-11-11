@@ -2,8 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireActor } from "@/lib/rbac/guard";
-import { opportunityScope, projectScope } from "@/lib/rbac/scope";
-import { CHIMNEY_LABELS, FIREPLACE_LABELS, GLASS_LABELS, LOST_REASONS, PROJECT_STAGE_LABELS, SOURCE_LABELS, STAGE_LABELS, STAGE_ORDER } from "@/lib/labels";
+import { opportunityScope, projectScope, quoteScope } from "@/lib/rbac/scope";
+import { CHIMNEY_LABELS, FIREPLACE_LABELS, GLASS_LABELS, LOST_REASONS, PROJECT_STAGE_LABELS, QUOTE_STATUS_LABELS, QUOTE_STATUS_TONE, SOURCE_LABELS, STAGE_LABELS, STAGE_ORDER } from "@/lib/labels";
+import { formatAmount } from "@/lib/quotes/calc";
+import { createQuoteAction } from "../../teklifler/actions";
+import { buttonClass } from "@/components/ui/styles";
 import { code, dateOnlyValue, dateToIstanbulLocal, fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
 import { formatPhone } from "@/lib/normalize";
 import { userOptions } from "@/lib/queries";
@@ -12,7 +15,7 @@ import { FilesPanel, HistoryPanel, TasksPanel, TimelinePanel } from "@/component
 import { OpportunityForm, ProjectCreateForm, StageForm } from "../forms";
 import { archiveOpportunityAction } from "../actions";
 
-const TABS = ["genel", "gorusmeler", "gorevler", "dosyalar", "projeler", "gecmis"] as const;
+const TABS = ["genel", "gorusmeler", "gorevler", "teklifler", "dosyalar", "projeler", "gecmis"] as const;
 type Tab = (typeof TABS)[number];
 const opts = (l: Record<string, string>) => Object.entries(l).map(([value, label]) => ({ value, label }));
 
@@ -38,11 +41,15 @@ export default async function OpportunityDetail({ params, searchParams }: { para
     },
   });
   if (!o) notFound();
-  const [projects, users, openTasks, files] = await Promise.all([
+  const canQuotes = actor.perms.has("quotes.view");
+  const [projects, users, openTasks, files, quotes] = await Promise.all([
     prisma.project.findMany({ where: { opportunityId: id, ...projectScope(actor) }, select: { id: true, number: true, name: true, stage: true } }),
     userOptions(),
     prisma.task.count({ where: { opportunityId: id, deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS"] } } }),
     prisma.attachment.count({ where: { opportunityId: id, deletedAt: null } }),
+    canQuotes
+      ? prisma.quote.findMany({ where: { opportunityId: id, ...quoteScope(actor) }, orderBy: [{ createdAt: "desc" }], select: { id: true, number: true, version: true, status: true, grandTotal: true, currency: true, validUntil: true, createdAt: true } })
+      : Promise.resolve([]),
   ]);
   const historyUsers = await prisma.user.findMany({ where: { id: { in: o.stageHistory.map((h) => h.changedById).filter(Boolean) as string[] } }, select: { id: true, name: true } });
   const href = (t: Tab) => `/firsatlar/${id}${t === "genel" ? "" : `?sekme=${t}`}`;
@@ -54,6 +61,13 @@ export default async function OpportunityDetail({ params, searchParams }: { para
       <PageHeader
         back={{ href: "/firsatlar", label: "Satış Fırsatları" }}
         title={o.title}
+        actions={
+          actor.perms.has("calendar.manage") && o.stage !== "WON" && o.stage !== "LOST" ? (
+            <Link href={`/takvim/yeni?firsat=${id}`} className={buttonClass("secondary")}>
+              Keşif / randevu planla
+            </Link>
+          ) : null
+        }
         description={
           <span className="flex flex-wrap items-center gap-2">
             <span className="tabular">{code.opportunity(o.number)}</span>·
@@ -71,6 +85,7 @@ export default async function OpportunityDetail({ params, searchParams }: { para
           { key: "genel", label: "Genel", href: href("genel") },
           { key: "gorusmeler", label: "Görüşmeler", href: href("gorusmeler") },
           { key: "gorevler", label: "Görevler", href: href("gorevler"), count: openTasks },
+          ...(canQuotes ? [{ key: "teklifler", label: "Teklifler", href: href("teklifler"), count: quotes.length }] : []),
           { key: "dosyalar", label: "Dosyalar", href: href("dosyalar"), count: files },
           { key: "projeler", label: "Projeler", href: href("projeler"), count: projects.length },
           { key: "gecmis", label: "Geçmiş", href: href("gecmis") },
@@ -192,6 +207,44 @@ export default async function OpportunityDetail({ params, searchParams }: { para
             </Card>
           ) : null}
         </div>
+      ) : null}
+      {tab === "teklifler" && canQuotes ? (
+        <Card
+          padded={false}
+          title="Teklifler"
+          actions={
+            actor.perms.has("quotes.create") && o.stage !== "LOST" ? (
+              <form action={createQuoteAction}>
+                <input type="hidden" name="opportunityId" value={id} />
+                <button className={buttonClass("primary", "sm")}>+ Teklif hazırla</button>
+              </form>
+            ) : null
+          }
+        >
+          {quotes.length ? (
+            <ul className="divide-y divide-line">
+              {quotes.map((q) => (
+                <li key={q.id}>
+                  <Link href={`/teklifler/${q.id}`} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-surface-2/50">
+                    <span className="text-sm">
+                      <span className="mr-3 text-xs tabular text-muted">
+                        {code.quote(q.number)}
+                        {q.version > 1 ? ` · s${q.version}` : ""}
+                      </span>
+                      <span className="font-medium tabular">{formatAmount(q.grandTotal.toString(), q.currency)}</span>
+                      <span className="block text-xs text-muted">
+                        {fmtDate(q.createdAt)} · geçerlilik {fmtDate(q.validUntil)}
+                      </span>
+                    </span>
+                    <Badge tone={QUOTE_STATUS_TONE[q.status]}>{QUOTE_STATUS_LABELS[q.status]}</Badge>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState title="Teklif yok" description="“Teklif hazırla” ile kalemli teklif oluşturun; onaydan sonra PDF olarak gönderilir." />
+          )}
+        </Card>
       ) : null}
       {tab === "gorusmeler" ? <TimelinePanel actor={actor} record={record} /> : null}
       {tab === "gorevler" ? <TasksPanel actor={actor} record={record} path={href("gorevler")} /> : null}

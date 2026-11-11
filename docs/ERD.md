@@ -69,6 +69,13 @@ Tümü: oturum + `requirePermission` + satır kapsamı (`scope.ts`) + Zod doğru
 | Kullanıcılar | `inviteUser`, `resetLink`, `updateUser`, `revokeSessionsAction`, `savePermissions` | `users.manage`, `roles.manage` |
 | Ayarlar | `changePassword`, `startMfa`, `confirmMfa`, `disableMfa`, `cancelMfaSetup`, `revokeSession`, `toggleEmailNotifications` | kendi hesabı |
 | Ayarlar | `saveWebsiteOwner` (web talepleri otomatik sorumlusu, `settings.intake.website_owner_id`) | `settings.manage` |
+| Ayarlar | `saveQuoteProfile` (teklif anteti, varsayılan şartlar, geçerlilik günü; `settings.quotes.profile`) | `settings.manage` |
+| Teklifler | `createQuoteAction`, `saveQuoteAction`, `submitQuoteAction`, `deleteDraftAction`, `reviseQuoteAction` | `quotes.create` |
+| Teklifler | `decideQuoteAction` (onay/ret, ret gerekçesi zorunlu, kendi teklifi hariç) | `quotes.approve` |
+| Teklifler | `markSentAction` (PDF'i kalıcı yazar), `customerResponseAction` | `quotes.send` |
+| Takvim | `saveAppointmentAction`, `appointmentStatusAction` | `calendar.manage` (görme: `calendar.view` / `calendar.view_all`) |
+| Şablonlar | `saveTemplateAction`, `toggleTemplateAction` | `templates.manage` |
+| Raporlar | (salt okunur sayfa, `services/reports.ts`) | `reports.view` |
 | Entegrasyon | `retry` (iş kuyruğu) | `integrations.manage` |
 
 ## HTTP uç noktaları
@@ -78,6 +85,7 @@ Tümü: oturum + `requirePermission` + satır kapsamı (`scope.ts`) + Zod doğru
 | GET | `/api/health` | DB erişimi + sürüm (sır içermez) | Faz 1 ✓ |
 | GET | `/api/files/{id}?v=&exp=&sig=` | HMAC imzalı (kullanıcıya bağlı, süreli) + oturum + kayıt erişimi; indirme denetlenir | Faz 1 ✓ |
 | GET | `/api/export/{contacts\|opportunities\|projects\|tasks\|audit}` | CSV (BOM, `;`, formül enjeksiyonu koruması); `export.data` izni + hız sınırı + denetim | Faz 1 ✓ |
+| GET | `/api/quotes/{id}/pdf` | Teklif PDF'i: gönderilmişse depodaki değişmez dosya, değilse anlık üretim (Taslak / Onay bekliyor filigranı). Oturum + `quoteScope` + denetim (`quote_pdf`) | Faz 3 ✓ |
 | POST | `/api/v1/intake/website` | Site → CRM form başvurusu (JSON, fotoğraf base64 aynı gövdede, en fazla 3 × 10 MB). Başlıklar: `X-Bifire-Timestamp` (unix sn, ±5 dk), `X-Bifire-Nonce` (16–64 `[A-Za-z0-9_-]`, `webhook_nonces` ile tekrar reddi → 409), `X-Bifire-Signature` = `v1=` + hex(HMAC-SHA256(secret, `ts.nonce.rawBody`)). Yanıt: 202 yeni / 200 `duplicate:true` / 401 imza / 413 / 422 / 503 yapılandırılmadı | Faz 2 ✓ |
 | POST | `/api/v1/intake/website/status` | Mutabakat: `{ submissionIds: [...] }` → `{ received: [...] }` (yalnız kimlik, kişisel veri yok). Aynı imza kuralları | Faz 2 ✓ |
 | GET/POST | `/api/v1/webhooks/meta` | Meta Lead Ads / Instagram / WhatsApp Cloud (doğrulama token + `X-Hub-Signature-256`) | Faz 4 |

@@ -85,6 +85,11 @@ export default async function ContactDetail({ params, searchParams }: { params: 
         }
         actions={
           <>
+            {actor.perms.has("calendar.manage") ? (
+              <Link href={`/takvim/yeni?musteri=${id}`} className={buttonClass("secondary")}>
+                Randevu planla
+              </Link>
+            ) : null}
             {actor.perms.has("opportunities.create") ? (
               <Link href={`/firsatlar/yeni?musteri=${id}`} className={buttonClass("secondary")}>
                 + Yeni fırsat

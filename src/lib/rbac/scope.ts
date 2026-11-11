@@ -55,3 +55,23 @@ export function taskScope(a: ScopeActor): Prisma.TaskWhereInput {
   if (a.perms.has("tasks.view_all")) return base;
   return { ...base, OR: [{ assigneeId: a.id }, { createdById: a.id }] };
 }
+
+/** Teklif: quotes.view + teklifin fırsatına ya da (fırsatsızsa) müşterisine erişim. */
+export function quoteScope(a: ScopeActor): Prisma.QuoteWhereInput {
+  const base: Prisma.QuoteWhereInput = { deletedAt: null };
+  if (!a.perms.has("quotes.view")) return { id: { in: [] } };
+  if (a.perms.has("opportunities.view_all") && a.perms.has("contacts.view_all")) return base;
+  return {
+    ...base,
+    OR: [{ opportunity: opportunityScope(a) }, { opportunityId: null, contact: contactScope(a) }],
+  };
+}
+
+/** Randevu: tümü (calendar.view_all) ya da kendine atanmış / kendi oluşturduğu / erişebildiği fırsat-proje. */
+export function appointmentScope(a: ScopeActor): Prisma.AppointmentWhereInput {
+  if (!a.perms.has("calendar.view") && !a.perms.has("calendar.view_all")) return { id: { in: [] } };
+  if (a.perms.has("calendar.view_all")) return {};
+  return {
+    OR: [{ assignedUserId: a.id }, { createdById: a.id }, { opportunity: { ownerId: a.id, deletedAt: null } }, { project: projectMember(a.id) }],
+  };
+}

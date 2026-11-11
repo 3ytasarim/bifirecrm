@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fromScaled, toScaled } from "@/lib/quotes/calc";
 
 /** Server action'ların tek tip dönüşü. Alan hataları formda ilgili alanın altında gösterilir. */
 export type ActionState = {
@@ -30,7 +31,7 @@ export function formObject(fd: FormData): Record<string, string> {
 
 /** Bilinen iş kuralı hatalarını kullanıcıya göster, beklenmeyenleri gizleyip logla. */
 export function failure(e: unknown): ActionState {
-  if (e instanceof Error && (e.name === "ForbiddenError" || /bulunamadı|zorunlu|yalnız|geçersiz|aktif değil|erişiminiz|yetkiniz|kendisiyle|Onaylanacak|desteklenmiyor|MB|işlenemedi|zararlı|boş/i.test(e.message))) {
+  if (e instanceof Error && (e.name === "ForbiddenError" || e.name === "RuleError" || /bulunamadı|zorunlu|yalnız|geçersiz|aktif değil|erişiminiz|yetkiniz|kendisiyle|Onaylanacak|desteklenmiyor|MB|işlenemedi|zararlı|boş/i.test(e.message))) {
     return { ok: false, message: e.message };
   }
   console.error("[action]", e);
@@ -51,12 +52,22 @@ export const zUuidOpt = z
   .optional()
   .transform((v) => (v ? v : null))
   .refine((v) => v === null || /^[0-9a-f-]{36}$/i.test(v), "Geçersiz seçim.");
+/** Tutar: "125.000" / "125.000,50" / "1234.5" → "125000.00" biçiminde (teklif hesabıyla aynı ayrıştırıcı). */
 export const zMoney = z
   .string()
   .trim()
   .optional()
-  .transform((v) => (v ? v.replace(/\./g, "").replace(",", ".").replace(/\s|₺/g, "") : null))
-  .refine((v) => v === null || (/^\d{1,12}(\.\d{1,2})?$/.test(v)), "Geçerli bir tutar yazın (ör. 125000 veya 125.000,50).");
+  .transform((v, ctx) => {
+    if (!v) return null;
+    try {
+      const s = toScaled(v, 2);
+      if (s >= 10n ** 14n) throw new Error();
+      return fromScaled(s, 2);
+    } catch {
+      ctx.addIssue({ code: "custom", message: "Geçerli bir tutar yazın (ör. 125000 veya 125.000,50)." });
+      return z.NEVER;
+    }
+  });
 export const zDecimal = z
   .string()
   .trim()

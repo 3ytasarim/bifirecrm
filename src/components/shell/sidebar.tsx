@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { CheckSquare, Hammer, Inbox, KanbanSquare, LayoutDashboard, Menu, PlugZap, Settings, ShieldCheck, Users, X } from "lucide-react";
+import { BarChart3, CalendarDays, CheckSquare, FileText, Hammer, Inbox, KanbanSquare, LayoutDashboard, Menu, MessageSquareText, PlugZap, Settings, ShieldCheck, Users, X } from "lucide-react";
 import { cn } from "@/components/ui/cn";
 import type { NavItem } from "./nav";
 
-const ICONS = { LayoutDashboard, Inbox, Users, KanbanSquare, Hammer, CheckSquare, PlugZap, ShieldCheck, Settings } as const;
+const ICONS = { LayoutDashboard, Inbox, Users, KanbanSquare, FileText, CalendarDays, Hammer, CheckSquare, BarChart3, MessageSquareText, PlugZap, ShieldCheck, Settings } as const;
 
 export function Sidebar({ items, badges }: { items: NavItem[]; badges: Record<string, number> }) {
   const pathname = usePathname();

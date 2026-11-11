@@ -11,7 +11,8 @@ import { mailConfigured } from "@/lib/mailer";
 import { fmtDateTime, fmtRelative } from "@/lib/format";
 import { Badge, Card, DefList, PageHeader } from "@/components/ui/primitives";
 import { buttonClass } from "@/components/ui/styles";
-import { ConfirmMfaForm, DisableMfaForm, PasswordForm, StartMfaButton } from "./forms";
+import { ConfirmMfaForm, DisableMfaForm, PasswordForm, QuoteProfileForm, StartMfaButton } from "./forms";
+import { quoteProfile } from "@/lib/services/quotes";
 import { saveWebsiteOwner, revokeSession, toggleEmailNotifications } from "./actions";
 import { userOptions } from "@/lib/queries";
 import { inputClass } from "@/components/ui/styles";
@@ -21,12 +22,13 @@ export const metadata = { title: "Ayarlar" };
 export default async function SettingsPage() {
   const actor = await requireActor();
   const current = await getSession();
-  const [user, sessions, backup, websiteOwner, owners] = await Promise.all([
+  const [user, sessions, backup, websiteOwner, owners, qProfile] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: actor.id }, select: { email: true, name: true, role: true, mfaEnabled: true, mfaSecretEnc: true, emailNotifications: true, lastLoginAt: true } }),
     prisma.session.findMany({ where: { userId: actor.id, revokedAt: null, expiresAt: { gt: new Date() } }, orderBy: { lastSeenAt: "desc" } }),
     actor.perms.has("settings.manage") ? prisma.setting.findUnique({ where: { key: "backup.last" } }) : null,
     actor.perms.has("settings.manage") ? prisma.setting.findUnique({ where: { key: "intake.website_owner_id" } }) : null,
     actor.perms.has("settings.manage") ? userOptions() : [],
+    actor.perms.has("settings.manage") ? quoteProfile() : null,
   ]);
   const pendingSecret = !user.mfaEnabled && user.mfaSecretEnc ? decrypt(user.mfaSecretEnc, env().DATA_ENCRYPTION_KEY) : null;
   const qr = pendingSecret ? await QRCode.toDataURL(otpauthUrl(pendingSecret, user.email), { margin: 1, width: 200 }) : null;
@@ -172,6 +174,11 @@ export default async function SettingsPage() {
                 <button className={buttonClass("secondary", "sm")}>Kaydet</button>
               </form>
             </Card>
+            {qProfile ? (
+              <Card title="Teklif bilgileri">
+                <QuoteProfileForm header={qProfile.header} terms={qProfile.terms} validityDays={qProfile.validityDays} />
+              </Card>
+            ) : null}
             <Card title="Sistem">
               <DefList
                 items={[

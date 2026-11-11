@@ -16,6 +16,10 @@ import type {
   IntegrationEventStatus,
   IntegrationProvider,
   ConnectionStatus,
+  QuoteStatus,
+  AppointmentType,
+  AppointmentStatus,
+  TemplateChannel,
 } from "@prisma/client";
 
 export const SOURCE_LABELS: Record<LeadSource, string> = {
@@ -261,4 +265,72 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   lead_discarded: "Talep reddedildi",
   integration_retry: "Entegrasyon yeniden denendi",
   settings_updated: "Ayar değişti",
+  setting_changed: "Ayar değişti",
+  lead_received: "Talep alındı (bekliyor)",
+  quote_created: "Teklif oluşturuldu",
+  quote_updated: "Teklif güncellendi",
+  quote_submitted: "Teklif onaya gönderildi",
+  quote_approval: "Teklif onay kararı",
+  quote_sent: "Teklif gönderildi",
+  quote_response: "Teklif müşteri yanıtı",
+  quote_revised: "Teklif revize edildi",
+  quote_deleted: "Teklif taslağı silindi",
+  quote_pdf: "Teklif PDF'i indirildi",
+  appointment_created: "Randevu oluşturuldu",
+  appointment_updated: "Randevu güncellendi",
+  appointment_status: "Randevu durumu değişti",
+  template_saved: "Mesaj şablonu kaydedildi",
+  report_view: "Rapor görüntülendi",
+};
+
+export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
+  DRAFT: "Taslak",
+  PENDING_APPROVAL: "Onay bekliyor",
+  APPROVED: "Onaylandı",
+  SENT: "Gönderildi",
+  ACCEPTED: "Kabul edildi",
+  REJECTED: "Müşteri reddetti",
+};
+
+export const QUOTE_STATUS_TONE: Record<QuoteStatus, "neutral" | "warning" | "info" | "success" | "danger" | "accent"> = {
+  DRAFT: "neutral",
+  PENDING_APPROVAL: "warning",
+  APPROVED: "info",
+  SENT: "accent",
+  ACCEPTED: "success",
+  REJECTED: "danger",
+};
+
+export const QUOTE_UNITS = ["adet", "takım", "m", "m²", "m³", "kg", "saat", "gün", "hizmet"] as const;
+export const TAX_RATES = ["20", "10", "1", "0"] as const;
+
+export const APPOINTMENT_TYPE_LABELS: Record<AppointmentType, string> = {
+  SHOWROOM_VISIT: "Showroom ziyareti",
+  SITE_SURVEY: "Keşif (ölçü)",
+  INSTALLATION: "Montaj",
+  MEETING: "Toplantı / görüşme",
+};
+
+export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
+  REQUESTED: "Talep edildi",
+  PROPOSED: "Saat önerildi",
+  CONFIRMED: "Onaylandı",
+  COMPLETED: "Tamamlandı",
+  CANCELLED: "İptal",
+  NO_SHOW: "Gelmedi",
+};
+
+export const APPOINTMENT_STATUS_TONE: Record<AppointmentStatus, "neutral" | "warning" | "info" | "success" | "danger" | "accent"> = {
+  REQUESTED: "warning",
+  PROPOSED: "info",
+  CONFIRMED: "accent",
+  COMPLETED: "success",
+  CANCELLED: "neutral",
+  NO_SHOW: "danger",
+};
+
+export const TEMPLATE_CHANNEL_LABELS: Record<TemplateChannel, string> = {
+  EMAIL: "E-posta",
+  WHATSAPP: "WhatsApp",
+  SMS: "SMS",
 };
