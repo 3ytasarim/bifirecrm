@@ -1,6 +1,6 @@
 # Faz 0 — Keşif Raporu
 
-Tarih: 2026-11-11 · Kapsam: Bifire Şömine canlı sitesi (`D:\Claude Code Project\Bifire`, salt okunur incelendi) + yeni CRM (`Bifire-CRM`, ayrı repo).
+Tarih: 2026-11-11 · Kapsam: Bifire Şömine canlı sitesi (`Bifire` reposu, salt okunur incelendi) + yeni CRM (`Bifire-CRM`, ayrı repo).
 
 ## 1. Bulgular
 
