@@ -1,0 +1,33 @@
+# /etc/nginx/sites-available/crm.bifiresomine.com  (örnek — sertifika yolları certbot sonrası)
+server {
+    listen 80;
+    listen [::]:80;
+    server_name crm.bifiresomine.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name crm.bifiresomine.com;
+
+    ssl_certificate     /etc/letsencrypt/live/crm.bifiresomine.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/crm.bifiresomine.com/privkey.pem;
+
+    # Dosya yükleme sınırı (MAX_UPLOAD_MB × birden çok dosya)
+    client_max_body_size 60m;
+
+    # Uygulama zaten güvenlik başlıklarını üretir; burada yalnız arama motoru engeli tekrar edilir.
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:3720;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 120s;
+    }
+}

@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+/*
+ * Bifire CRM tasarım sistemi — Bifire sitesinin taş + bronz + antrasit dilinin uygulama karşılığı.
+ * Renkler CSS değişkeni; açık/koyu tema [data-theme] ile (varsayılan: sistem tercihi).
+ */
+:root {
+  --bg: #f3f0e9;
+  --surface: #fbfaf7;
+  --surface-2: #efebe3;
+  --line: #ddd7cc;
+  --line-strong: #c9c1b3;
+  --fg: #262825;
+  --muted: #676860;
+  --accent: #92714e;
+  --accent-ink: #7a5a3a;
+  --accent-soft: #efe5d8;
+  --on-accent: #fffaf3;
+  --danger: #b4372c;
+  --danger-soft: #f7e3df;
+  --success: #2f7a4b;
+  --success-soft: #e0efe5;
+  --warning: #9a6a00;
+  --warning-soft: #f6ecd2;
+  --info: #2d5f8b;
+  --info-soft: #e0eaf4;
+  --shadow: 0 1px 2px rgb(38 40 37 / 0.06), 0 4px 16px rgb(38 40 37 / 0.05);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #181a17;
+    --surface: #20221f;
+    --surface-2: #272a26;
+    --line: #353831;
+    --line-strong: #484c44;
+    --fg: #ecebe6;
+    --muted: #a3a49b;
+    --accent: #bc9b78;
+    --accent-ink: #d9b388;
+    --accent-soft: #3a3127;
+    --on-accent: #1b1a17;
+    --danger: #ec7a6e;
+    --danger-soft: #3e2421;
+    --success: #6cc58f;
+    --success-soft: #1f3528;
+    --warning: #e3b64f;
+    --warning-soft: #3a3020;
+    --info: #79aee0;
+    --info-soft: #1f2e3c;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #181a17;
+  --surface: #20221f;
+  --surface-2: #272a26;
+  --line: #353831;
+  --line-strong: #484c44;
+  --fg: #ecebe6;
+  --muted: #a3a49b;
+  --accent: #bc9b78;
+  --accent-ink: #d9b388;
+  --accent-soft: #3a3127;
+  --on-accent: #1b1a17;
+  --danger: #ec7a6e;
+  --danger-soft: #3e2421;
+  --success: #6cc58f;
+  --success-soft: #1f3528;
+  --warning: #e3b64f;
+  --warning-soft: #3a3020;
+  --info: #79aee0;
+  --info-soft: #1f2e3c;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --font-sans: var(--font-dmsans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-manrope), var(--font-dmsans), ui-sans-serif, system-ui, sans-serif;
+  --shadow-card: var(--shadow);
+  --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

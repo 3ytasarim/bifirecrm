@@ -1,0 +1,28 @@
+# deps
+/node_modules
+
+# next
+/.next/
+/out/
+/build
+next-env.d.ts
+*.tsbuildinfo
+
+# env — gerçek sırlar asla commit edilmez
+.env
+.env.*
+!.env.example
+
+# yerel özel dosya deposu (müşteri dosyaları) ve yedekler
+/storage/
+/backups/
+
+# test çıktıları (yazılan şifreler görünebilir)
+/test-results/
+/playwright-report/
+/coverage/
+
+# os
+.DS_Store
+Thumbs.db
+*.log

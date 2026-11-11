@@ -1,0 +1,1038 @@
+// Bifire CRM — veri modeli.
+// Bifire web sitesi veritabanından TAMAMEN ayrı PostgreSQL veritabanı.
+// Bağlantı: prisma.config.ts (CLI, doğrudan host) ve src/lib/db.ts (uygulama, pooler).
+// Kurallar: UUID (v7) birincil anahtar, timestamptz zaman alanları, para alanları numeric,
+// ana kayıtlarda yumuşak silme (deletedAt). Tablolar snake_case, kolonlar camelCase.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pg_trgm]
+}
+
+// ───────────────────────────── Enum'lar ─────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  MANAGER
+  SALES
+  DESIGN_TECHNICAL
+  PRODUCTION_INSTALLATION
+  READ_ONLY
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum AuthTokenType {
+  INVITE
+  PASSWORD_RESET
+}
+
+enum LeadSource {
+  WEBSITE_CONTACT
+  WEBSITE_QUOTE
+  WEBSITE_SHOWROOM
+  WEBSITE_DESIGN
+  INSTAGRAM_LEAD_AD
+  FACEBOOK_LEAD_AD
+  WHATSAPP
+  INSTAGRAM_DM
+  PHONE
+  SHOWROOM
+  REFERRAL
+  MANUAL
+  OTHER
+}
+
+enum LeadStatus {
+  RECEIVED
+  CONVERTED
+  DUPLICATE
+  DISCARDED
+}
+
+enum ContactChannelType {
+  PHONE
+  EMAIL
+  WHATSAPP
+  INSTAGRAM
+}
+
+enum PreferredChannel {
+  PHONE
+  WHATSAPP
+  EMAIL
+  ANY
+}
+
+enum OpportunityStage {
+  NEW
+  CONTACT_PENDING
+  CONTACTED
+  NEEDS_ASSESSMENT
+  SHOWROOM_OR_SURVEY
+  TECHNICAL_REVIEW
+  QUOTATION_PREPARING
+  QUOTATION_SENT
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum ProjectStage {
+  TECHNICAL_APPROVAL
+  DESIGN_APPROVAL
+  ORDER_CONFIRMED
+  PRODUCTION_PLANNING
+  IN_PRODUCTION
+  READY_FOR_SHIPMENT
+  SHIPPED
+  INSTALLATION_SCHEDULED
+  INSTALLED
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+}
+
+enum FireplaceType {
+  WOOD
+  ELECTRIC
+  BIOETHANOL
+  GAS
+  GARDEN
+  BARBECUE
+  OTHER
+}
+
+enum ChimneyStatus {
+  EXISTS
+  NONE
+  NEEDS_WORK
+  UNKNOWN
+}
+
+enum GlassOrientation {
+  FRONT
+  LEFT_CORNER
+  RIGHT_CORNER
+  DOUBLE_SIDED
+  THREE_SIDED
+  OTHER
+}
+
+enum AppointmentType {
+  SHOWROOM_VISIT
+  SITE_SURVEY
+  INSTALLATION
+  MEETING
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  PROPOSED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum ActivityType {
+  CALL
+  MEETING
+  SHOWROOM_VISIT
+  SITE_VISIT
+  WHATSAPP
+  INSTAGRAM
+  EMAIL
+  STAGE_CHANGE
+  ASSIGNMENT
+  FILE
+  TASK
+  SYSTEM
+}
+
+enum QuoteStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
+enum AttachmentKind {
+  PHOTO
+  DRAWING
+  QUOTE
+  CONTRACT
+  SURVEY_REPORT
+  INSTALLATION_REPORT
+  OTHER
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  NOT_SCANNED
+}
+
+enum TemplateChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+}
+
+enum IntegrationProvider {
+  BIFIRE_WEBSITE
+  META_LEAD_ADS
+  WHATSAPP
+  INSTAGRAM_DM
+  SMTP
+}
+
+enum ConnectionStatus {
+  NOT_CONFIGURED
+  ACTIVE
+  ERROR
+  DISABLED
+}
+
+enum IntegrationEventStatus {
+  RECEIVED
+  PENDING
+  PROCESSING
+  SUCCESS
+  RETRY
+  FAILED
+  DEAD_LETTER
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  RETRY
+  FAILED
+  DEAD_LETTER
+}
+
+enum ConsentType {
+  KVKK_NOTICE
+  MARKETING_EMAIL
+  MARKETING_SMS
+  MARKETING_WHATSAPP
+  MARKETING_PHONE
+}
+
+enum ConsentAction {
+  ACKNOWLEDGED
+  GRANTED
+  WITHDRAWN
+}
+
+// ───────────────────────────── Kimlik & yetki ─────────────────────────────
+
+model User {
+  id               String     @id @default(uuid(7)) @db.Uuid
+  email            String     @unique
+  name             String
+  phone            String?
+  role             Role       @default(READ_ONLY)
+  status           UserStatus @default(INVITED)
+  passwordHash     String?
+  /// TOTP sırrı, AES-256-GCM ile şifreli (DATA_ENCRYPTION_KEY).
+  mfaSecretEnc     String?
+  mfaEnabled       Boolean    @default(false)
+  failedLoginCount Int        @default(0)
+  lockedUntil      DateTime?  @db.Timestamptz
+  lastLoginAt      DateTime?  @db.Timestamptz
+  /// Görev e-posta bildirimleri (SMTP yapılandırılınca kullanılır).
+  emailNotifications Boolean  @default(true)
+  createdAt        DateTime   @default(now()) @db.Timestamptz
+  updatedAt        DateTime   @updatedAt @db.Timestamptz
+
+  sessions   Session[]
+  authTokens AuthToken[] @relation("TokenUser")
+
+  ownedContacts      Contact[]      @relation("ContactOwner")
+  ownedOrganizations Organization[] @relation("OrganizationOwner")
+  ownedOpportunities Opportunity[]  @relation("OpportunityOwner")
+  ownedProjects      Project[]      @relation("ProjectOwner")
+  technicalProjects  Project[]      @relation("ProjectTechnical")
+  installProjects    Project[]      @relation("ProjectInstallation")
+  assignedTasks      Task[]         @relation("TaskAssignee")
+  createdTasks       Task[]         @relation("TaskCreator")
+  notifications      InternalNotification[]
+  auditLogs          AuditLog[]
+
+  @@index([role, status])
+  @@map("users")
+}
+
+model Session {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  /// Çerezdeki rastgele anahtarın SHA-256 özeti; ham anahtar DB'de tutulmaz.
+  tokenHash  String    @unique
+  userId     String    @db.Uuid
+  /// MFA etkin kullanıcı ikinci adımı tamamlayana kadar true.
+  mfaPending Boolean   @default(false)
+  ipHash     String?
+  userAgent  String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  lastSeenAt DateTime  @default(now()) @db.Timestamptz
+  expiresAt  DateTime  @db.Timestamptz
+  revokedAt  DateTime? @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("sessions")
+}
+
+model AuthToken {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  type        AuthTokenType
+  tokenHash   String        @unique
+  userId      String        @db.Uuid
+  createdById String?       @db.Uuid
+  expiresAt   DateTime      @db.Timestamptz
+  usedAt      DateTime?     @db.Timestamptz
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+
+  user User @relation("TokenUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("auth_tokens")
+}
+
+/// Varsayılan rol-izin matrisinin (src/lib/rbac/permissions.ts) üzerine yazılan yönetici kararları.
+model RolePermission {
+  role        Role
+  permission  String
+  granted     Boolean
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@id([role, permission])
+  @@map("role_permissions")
+}
+
+// ───────────────────────────── Müşteri ─────────────────────────────
+
+model Organization {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  name      String
+  taxNumber String?
+  phone     String?
+  email     String?
+  city      String?
+  district  String?
+  address   String?
+  notes     String?
+  ownerId   String?   @db.Uuid
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  owner         User?         @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  contacts      Contact[]
+  opportunities Opportunity[]
+
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@map("organizations")
+}
+
+model Contact {
+  id               String            @id @default(uuid(7)) @db.Uuid
+  /// Okunabilir müşteri numarası (M-000123).
+  number           Int               @unique @default(autoincrement())
+  firstName        String
+  lastName         String?
+  fullName         String
+  title            String?
+  organizationId   String?           @db.Uuid
+  /// E.164 (+905321234567) — eşleştirme anahtarı.
+  primaryPhone     String?
+  /// Küçük harf, boşluksuz.
+  primaryEmail     String?
+  city             String?
+  district         String?
+  address          String?
+  preferredChannel PreferredChannel  @default(ANY)
+  source           LeadSource        @default(MANUAL)
+  tags             String[]          @default([])
+  notes            String?
+  ownerId          String?           @db.Uuid
+  /// KVKK aydınlatma metninin gösterildiği an (kanıtı consent_events'te).
+  kvkkNoticeAt     DateTime?         @db.Timestamptz
+  /// Pazarlama izni AYRI alan; kanıt consent_events'te.
+  marketingConsent Boolean           @default(false)
+  marketingConsentAt DateTime?       @db.Timestamptz
+  /// Birleştirmede kaybeden kayıt kazanana işaret eder (silinmez, yumuşak silinir).
+  mergedIntoId     String?           @db.Uuid
+  createdById      String?           @db.Uuid
+  createdAt        DateTime          @default(now()) @db.Timestamptz
+  updatedAt        DateTime          @updatedAt @db.Timestamptz
+  deletedAt        DateTime?         @db.Timestamptz
+
+  organization  Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  owner         User?           @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  mergedInto    Contact?        @relation("ContactMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom    Contact[]       @relation("ContactMerge")
+  channels      ContactChannel[]
+  leads         Lead[]
+  opportunities Opportunity[]
+  projects      Project[]
+  appointments  Appointment[]
+  tasks         Task[]
+  activities    Activity[]
+  notesList     Note[]
+  quotes        Quote[]
+  attachments   Attachment[]
+  consentEvents ConsentEvent[]
+
+  @@index([primaryPhone])
+  @@index([primaryEmail])
+  @@index([ownerId])
+  @@index([deletedAt, createdAt])
+  @@index([fullName(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@map("contacts")
+}
+
+model ContactChannel {
+  id         String             @id @default(uuid(7)) @db.Uuid
+  contactId  String             @db.Uuid
+  type       ContactChannelType
+  /// Kullanıcının girdiği hali.
+  value      String
+  /// Eşleştirme için normalize edilmiş hali (E.164 / küçük harf e-posta).
+  normalized String
+  isPrimary  Boolean            @default(false)
+  label      String?
+  createdAt  DateTime           @default(now()) @db.Timestamptz
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, type, normalized])
+  @@index([type, normalized])
+  @@map("contact_channels")
+}
+
+model ConsentEvent {
+  id           String        @id @default(uuid(7)) @db.Uuid
+  contactId    String        @db.Uuid
+  type         ConsentType
+  action       ConsentAction
+  /// "website:/teklif-al", "manual", "phone" …
+  source       String
+  /// Aydınlatma/izin metni sürümü, form adresi, ip özeti vb. kanıt.
+  evidence     Json?
+  occurredAt   DateTime      @default(now()) @db.Timestamptz
+  recordedById String?       @db.Uuid
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, type])
+  @@map("consent_events")
+}
+
+// ───────────────────────────── Talep & satış ─────────────────────────────
+
+/// Gelen ham başvuru (web formu, reklam formu, manuel hızlı kayıt). Fırsata dönüşür.
+model Lead {
+  id                 String     @id @default(uuid(7)) @db.Uuid
+  source             LeadSource
+  status             LeadStatus @default(RECEIVED)
+  /// Kaynağın kendi gönderim kimliği (idempotency).
+  sourceSubmissionId String?
+  formType           String?
+  name               String
+  phone              String?
+  email              String?
+  city               String?
+  district           String?
+  message            String?
+  payload            Json?
+  utm                Json?
+  contactId          String?    @db.Uuid
+  opportunityId      String?    @db.Uuid
+  receivedAt         DateTime   @default(now()) @db.Timestamptz
+  processedAt        DateTime?  @db.Timestamptz
+  createdById        String?    @db.Uuid
+
+  contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  attachments Attachment[]
+
+  @@unique([source, sourceSubmissionId])
+  @@index([status, receivedAt])
+  @@map("leads")
+}
+
+model Opportunity {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  /// Okunabilir fırsat numarası (F-000123).
+  number            Int              @unique @default(autoincrement())
+  title             String
+  contactId         String           @db.Uuid
+  organizationId    String?          @db.Uuid
+  source            LeadSource       @default(MANUAL)
+  stage             OpportunityStage @default(NEW)
+  /// Kanban kolonundaki sıra (küçük → üstte).
+  position          Float            @default(0)
+  ownerId           String?          @db.Uuid
+  fireplaceType     FireplaceType?
+  productCategory   String?
+  productModel      String?
+  city              String?
+  district          String?
+  message           String?
+  estimatedAmount   Decimal?         @db.Decimal(14, 2)
+  currency          String           @default("TRY") @db.Char(3)
+  expectedCloseDate DateTime?        @db.Date
+  lastContactAt     DateTime?        @db.Timestamptz
+  nextActionAt      DateTime?        @db.Timestamptz
+  nextActionNote    String?
+  lostReason        String?
+  lostNote          String?
+  wonAt             DateTime?        @db.Timestamptz
+  lostAt            DateTime?        @db.Timestamptz
+  utm               Json?
+  createdById       String?          @db.Uuid
+  createdAt         DateTime         @default(now()) @db.Timestamptz
+  updatedAt         DateTime         @updatedAt @db.Timestamptz
+  deletedAt         DateTime?        @db.Timestamptz
+
+  contact      Contact                   @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  organization Organization?             @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  owner        User?                     @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  stageHistory OpportunityStageHistory[]
+  projects     Project[]
+  leads        Lead[]
+  appointments Appointment[]
+  tasks        Task[]
+  activities   Activity[]
+  notesList    Note[]
+  quotes       Quote[]
+  attachments  Attachment[]
+
+  @@index([stage, position])
+  @@index([ownerId, stage])
+  @@index([contactId])
+  @@index([source, createdAt])
+  @@index([nextActionAt])
+  @@index([deletedAt, createdAt])
+  @@map("opportunities")
+}
+
+model OpportunityStageHistory {
+  id            String            @id @default(uuid(7)) @db.Uuid
+  opportunityId String            @db.Uuid
+  fromStage     OpportunityStage?
+  toStage       OpportunityStage
+  changedById   String?           @db.Uuid
+  note          String?
+  changedAt     DateTime          @default(now()) @db.Timestamptz
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityId, changedAt])
+  @@index([toStage, changedAt])
+  @@map("opportunity_stage_history")
+}
+
+// ───────────────────────────── Proje / üretim / montaj ─────────────────────────────
+
+/// Kazanılan fırsatın operasyon kaydı. Bir fırsat 0..N projeye bağlanabilir (çoğunlukla 1).
+model Project {
+  id                 String            @id @default(uuid(7)) @db.Uuid
+  /// Okunabilir proje numarası (P-000123).
+  number             Int               @unique @default(autoincrement())
+  name               String
+  contactId          String            @db.Uuid
+  opportunityId      String?           @db.Uuid
+  stage              ProjectStage      @default(TECHNICAL_APPROVAL)
+  fireplaceType      FireplaceType?
+  productCategory    String?
+  productModel       String?
+  siteAddress        String?
+  siteCity           String?
+  siteDistrict       String?
+  wallWidthCm        Decimal?          @db.Decimal(8, 1)
+  ceilingHeightCm    Decimal?          @db.Decimal(8, 1)
+  chimneyStatus      ChimneyStatus     @default(UNKNOWN)
+  glassOrientation   GlassOrientation?
+  cladding           String?
+  technicalNotes     String?
+  surveyDate         DateTime?         @db.Timestamptz
+  ownerId            String?           @db.Uuid
+  technicalUserId    String?           @db.Uuid
+  installationUserId String?           @db.Uuid
+  /// İç planlama tarihleri. Teknik onay (datesApprovedAt) olmadan müşteriye kesin tarih olarak iletilemez.
+  plannedShipDate    DateTime?         @db.Date
+  plannedInstallDate DateTime?         @db.Date
+  datesApprovedAt    DateTime?         @db.Timestamptz
+  datesApprovedById  String?           @db.Uuid
+  installedAt        DateTime?         @db.Timestamptz
+  completedAt        DateTime?         @db.Timestamptz
+  holdReason         String?
+  createdById        String?           @db.Uuid
+  createdAt          DateTime          @default(now()) @db.Timestamptz
+  updatedAt          DateTime          @updatedAt @db.Timestamptz
+  deletedAt          DateTime?         @db.Timestamptz
+
+  contact          Contact               @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  opportunity      Opportunity?          @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  owner            User?                 @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  technicalUser    User?                 @relation("ProjectTechnical", fields: [technicalUserId], references: [id], onDelete: SetNull)
+  installationUser User?                 @relation("ProjectInstallation", fields: [installationUserId], references: [id], onDelete: SetNull)
+  stageHistory     ProjectStageHistory[]
+  appointments     Appointment[]
+  tasks            Task[]
+  activities       Activity[]
+  notesList        Note[]
+  quotes           Quote[]
+  attachments      Attachment[]
+
+  @@index([stage])
+  @@index([contactId])
+  @@index([opportunityId])
+  @@index([ownerId])
+  @@index([technicalUserId])
+  @@index([installationUserId])
+  @@index([plannedInstallDate])
+  @@map("projects")
+}
+
+model ProjectStageHistory {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  projectId   String        @db.Uuid
+  fromStage   ProjectStage?
+  toStage     ProjectStage
+  changedById String?       @db.Uuid
+  note        String?
+  changedAt   DateTime      @default(now()) @db.Timestamptz
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, changedAt])
+  @@map("project_stage_history")
+}
+
+/// Showroom ziyareti / keşif / montaj randevusu. Talep (REQUESTED) müşteri onayı olmadan CONFIRMED olmaz.
+model Appointment {
+  id                  String            @id @default(uuid(7)) @db.Uuid
+  type                AppointmentType
+  status              AppointmentStatus @default(REQUESTED)
+  contactId           String            @db.Uuid
+  opportunityId       String?           @db.Uuid
+  projectId           String?           @db.Uuid
+  /// Müşterinin tercih ettiği zaman (serbest metin, ör. "Cumartesi öğleden sonra").
+  requestedNote       String?
+  startAt             DateTime?         @db.Timestamptz
+  endAt               DateTime?         @db.Timestamptz
+  location            String?
+  assignedUserId      String?           @db.Uuid
+  customerConfirmedAt DateTime?         @db.Timestamptz
+  notes               String?
+  createdById         String?           @db.Uuid
+  createdAt           DateTime          @default(now()) @db.Timestamptz
+  updatedAt           DateTime          @updatedAt @db.Timestamptz
+
+  contact     Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([startAt])
+  @@index([status, type])
+  @@map("appointments")
+}
+
+// ───────────────────────────── Görev / aktivite / not ─────────────────────────────
+
+model Task {
+  id            String       @id @default(uuid(7)) @db.Uuid
+  title         String
+  description   String?
+  status        TaskStatus   @default(OPEN)
+  priority      TaskPriority @default(NORMAL)
+  dueAt         DateTime?    @db.Timestamptz
+  /// İlk hatırlatma anı; tekrar aralığı dakika cinsinden (null = tekrar yok).
+  remindAt      DateTime?    @db.Timestamptz
+  repeatMinutes Int?
+  lastRemindedAt DateTime?   @db.Timestamptz
+  escalatedAt   DateTime?    @db.Timestamptz
+  assigneeId    String?      @db.Uuid
+  createdById   String?      @db.Uuid
+  contactId     String?      @db.Uuid
+  opportunityId String?      @db.Uuid
+  projectId     String?      @db.Uuid
+  completedAt   DateTime?    @db.Timestamptz
+  completedById String?      @db.Uuid
+  createdAt     DateTime     @default(now()) @db.Timestamptz
+  updatedAt     DateTime     @updatedAt @db.Timestamptz
+  deletedAt     DateTime?    @db.Timestamptz
+
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy   User?        @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([assigneeId, status, dueAt])
+  @@index([status, dueAt])
+  @@index([contactId])
+  @@index([opportunityId])
+  @@index([projectId])
+  @@map("tasks")
+}
+
+/// Zaman çizelgesi olayı (değişmez). Notlar ayrı tabloda düzenlenebilir tutulur.
+model Activity {
+  id            String       @id @default(uuid(7)) @db.Uuid
+  type          ActivityType
+  subject       String?
+  body          String?
+  occurredAt    DateTime     @default(now()) @db.Timestamptz
+  durationMin   Int?
+  actorId       String?      @db.Uuid
+  contactId     String?      @db.Uuid
+  opportunityId String?      @db.Uuid
+  projectId     String?      @db.Uuid
+  metadata      Json?
+  createdAt     DateTime     @default(now()) @db.Timestamptz
+
+  contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, occurredAt])
+  @@index([opportunityId, occurredAt])
+  @@index([projectId, occurredAt])
+  @@map("activities")
+}
+
+model Note {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  body          String
+  pinned        Boolean   @default(false)
+  authorId      String?   @db.Uuid
+  contactId     String?   @db.Uuid
+  opportunityId String?   @db.Uuid
+  projectId     String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+  deletedAt     DateTime? @db.Timestamptz
+
+  contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, createdAt])
+  @@index([opportunityId, createdAt])
+  @@index([projectId, createdAt])
+  @@map("notes")
+}
+
+// ───────────────────────────── Teklif (Faz 3) ─────────────────────────────
+
+model Quote {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  number         Int         @unique @default(autoincrement())
+  /// Aynı teklifin sürümleri aynı rootId'yi paylaşır.
+  rootId         String?     @db.Uuid
+  version        Int         @default(1)
+  status         QuoteStatus @default(DRAFT)
+  contactId      String      @db.Uuid
+  opportunityId  String?     @db.Uuid
+  projectId      String?     @db.Uuid
+  currency       String      @default("TRY") @db.Char(3)
+  subtotal       Decimal     @default(0) @db.Decimal(14, 2)
+  discountTotal  Decimal     @default(0) @db.Decimal(14, 2)
+  taxTotal       Decimal     @default(0) @db.Decimal(14, 2)
+  grandTotal     Decimal     @default(0) @db.Decimal(14, 2)
+  validUntil     DateTime?   @db.Date
+  notes          String?
+  terms          String?
+  pdfAttachmentId String?    @db.Uuid
+  sentAt         DateTime?   @db.Timestamptz
+  createdById    String?     @db.Uuid
+  createdAt      DateTime    @default(now()) @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @db.Timestamptz
+  deletedAt      DateTime?   @db.Timestamptz
+
+  contact     Contact         @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  opportunity Opportunity?    @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  project     Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  items       QuoteItem[]
+  approvals   QuoteApproval[]
+
+  @@index([status])
+  @@index([rootId, version])
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  quoteId     String  @db.Uuid
+  position    Int     @default(0)
+  description String
+  quantity    Decimal @default(1) @db.Decimal(12, 3)
+  unit        String  @default("adet")
+  unitPrice   Decimal @db.Decimal(14, 2)
+  discountPct Decimal @default(0) @db.Decimal(5, 2)
+  taxPct      Decimal @default(20) @db.Decimal(5, 2)
+  lineTotal   Decimal @db.Decimal(14, 2)
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId, position])
+  @@map("quote_items")
+}
+
+model QuoteApproval {
+  id          String           @id @default(uuid(7)) @db.Uuid
+  quoteId     String           @db.Uuid
+  decision    ApprovalDecision
+  approverId  String           @db.Uuid
+  note        String?
+  createdAt   DateTime         @default(now()) @db.Timestamptz
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+  @@map("quote_approvals")
+}
+
+// ───────────────────────────── Dosyalar ─────────────────────────────
+
+/// Dosyanın kendisi private nesne deposunda (S3 uyumlu) ya da yerel özel dizinde; DB'de yalnız metadata.
+model Attachment {
+  id            String         @id @default(uuid(7)) @db.Uuid
+  storageKey    String         @unique
+  thumbnailKey  String?
+  originalName  String
+  mimeType      String
+  sizeBytes     Int
+  checksumSha256 String
+  kind          AttachmentKind @default(OTHER)
+  scanStatus    ScanStatus     @default(NOT_SCANNED)
+  exifStripped  Boolean        @default(false)
+  width         Int?
+  height        Int?
+  uploadedById  String?        @db.Uuid
+  contactId     String?        @db.Uuid
+  opportunityId String?        @db.Uuid
+  projectId     String?        @db.Uuid
+  leadId        String?        @db.Uuid
+  createdAt     DateTime       @default(now()) @db.Timestamptz
+  deletedAt     DateTime?      @db.Timestamptz
+
+  contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([opportunityId])
+  @@index([projectId])
+  @@index([checksumSha256])
+  @@map("attachments")
+}
+
+// ───────────────────────────── Şablon & bildirim ─────────────────────────────
+
+model MessageTemplate {
+  id          String          @id @default(uuid(7)) @db.Uuid
+  name        String
+  channel     TemplateChannel
+  subject     String?
+  body        String
+  /// Gövdede izin verilen değişkenler ({{ad}}, {{urun}} …).
+  variables   String[]        @default([])
+  active      Boolean         @default(true)
+  createdById String?         @db.Uuid
+  createdAt   DateTime        @default(now()) @db.Timestamptz
+  updatedAt   DateTime        @updatedAt @db.Timestamptz
+
+  @@map("message_templates")
+}
+
+/// Çalışana iç bildirim. Müşteriye mesaj DEĞİLDİR.
+model InternalNotification {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @db.Uuid
+  type      String
+  title     String
+  body      String?
+  link      String?
+  /// Aynı olay için tekrar bildirim üretmemek için (ör. "task-overdue:<id>:<gün>").
+  dedupeKey String?
+  readAt    DateTime? @db.Timestamptz
+  emailedAt DateTime? @db.Timestamptz
+  createdAt DateTime  @default(now()) @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt, createdAt])
+  @@map("internal_notifications")
+}
+
+// ───────────────────────────── Entegrasyon & iş kuyruğu ─────────────────────────────
+
+model IntegrationConnection {
+  id          String              @id @default(uuid(7)) @db.Uuid
+  provider    IntegrationProvider @unique
+  status      ConnectionStatus    @default(NOT_CONFIGURED)
+  /// Sır OLMAYAN ayarlar (sayfa id, form eşlemeleri…). Sırlar yalnız .env'de.
+  config      Json?
+  lastSyncAt  DateTime?           @db.Timestamptz
+  lastErrorAt DateTime?           @db.Timestamptz
+  lastError   String?
+  createdAt   DateTime            @default(now()) @db.Timestamptz
+  updatedAt   DateTime            @updatedAt @db.Timestamptz
+
+  @@map("integration_connections")
+}
+
+model IntegrationEvent {
+  id              String                 @id @default(uuid(7)) @db.Uuid
+  provider        IntegrationProvider
+  /// Sağlayıcının olay kimliği (idempotency anahtarı).
+  externalEventId String
+  eventType       String
+  status          IntegrationEventStatus @default(RECEIVED)
+  requestId       String?
+  payload         Json
+  attempts        Int                    @default(0)
+  lastError       String?
+  leadId          String?                @db.Uuid
+  receivedAt      DateTime               @default(now()) @db.Timestamptz
+  processedAt     DateTime?              @db.Timestamptz
+
+  jobs IntegrationJob[]
+
+  @@unique([provider, externalEventId])
+  @@index([status, receivedAt])
+  @@map("integration_events")
+}
+
+/// Veritabanı tabanlı dayanıklı iş kuyruğu (FOR UPDATE SKIP LOCKED). Retry + dead-letter.
+model IntegrationJob {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  type        String
+  payload     Json
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(8)
+  runAt       DateTime  @default(now()) @db.Timestamptz
+  lockedAt    DateTime? @db.Timestamptz
+  lockedBy    String?
+  lastError   String?
+  eventId     String?   @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  completedAt DateTime? @db.Timestamptz
+
+  event IntegrationEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([status, runAt])
+  @@index([type, status])
+  @@map("integration_jobs")
+}
+
+model ExternalIdMapping {
+  id         String              @id @default(uuid(7)) @db.Uuid
+  provider   IntegrationProvider
+  externalId String
+  entityType String
+  entityId   String              @db.Uuid
+  createdAt  DateTime            @default(now()) @db.Timestamptz
+
+  @@unique([provider, externalId])
+  @@index([entityType, entityId])
+  @@map("external_id_mappings")
+}
+
+// ───────────────────────────── Denetim & ayarlar ─────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  actorId    String?  @db.Uuid
+  /// login, login_failed, export, import, merge, role_change, quote_approval, delete, file_download …
+  action     String
+  entityType String?
+  entityId   String?
+  summary    String?
+  before     Json?
+  after      Json?
+  ipHash     String?
+  userAgent  String?
+  createdAt  DateTime @default(now()) @db.Timestamptz
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Setting {
+  key         String   @id
+  value       Json
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@map("settings")
+}
+
+/// Basit sabit pencere hız sınırı (tek ve çok process güvenli).
+model RateLimitBucket {
+  key       String   @id
+  count     Int
+  resetAt   DateTime @db.Timestamptz
+
+  @@map("rate_limit_buckets")
+}
+
+/// İmzalı dış isteklerde tekrar (replay) koruması: aynı nonce zaman penceresi içinde ikinci kez kabul edilmez.
+model WebhookNonce {
+  nonce     String              @id
+  provider  IntegrationProvider
+  expiresAt DateTime            @db.Timestamptz
+  createdAt DateTime            @default(now()) @db.Timestamptz
+
+  @@index([expiresAt])
+  @@map("webhook_nonces")
+}
