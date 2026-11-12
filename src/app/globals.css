@@ -189,6 +189,62 @@ body::before {
   backdrop-filter: blur(24px) saturate(160%);
 }
 
+/* Giriş ekranı buzlu cam kartı: degrade kenar çizgisi, yuvarlak (hap) alanlar ve buton. */
+.auth-glass {
+  position: relative;
+  border-radius: 32px;
+  background: rgb(18 14 10 / 0.38);
+  -webkit-backdrop-filter: blur(26px) saturate(160%);
+  backdrop-filter: blur(26px) saturate(160%);
+  box-shadow:
+    0 35px 70px -15px rgb(0 0 0 / 0.65),
+    inset 0 1.5px 2px rgb(255 255 255 / 0.25),
+    inset 0 -1.5px 2px rgb(255 255 255 / 0.06);
+}
+.auth-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1.2px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0.08) 40%, rgb(255 255 255 / 0.03) 60%, rgb(240 138 75 / 0.45));
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.auth-glass input:not([type="hidden"]):not([type="checkbox"]) {
+  min-height: 48px;
+  border-radius: 9999px;
+  padding-inline: 20px;
+  border-color: rgb(255 255 255 / 0.22);
+  background: rgb(255 255 255 / 0.07);
+  color: #fff;
+}
+.auth-glass input::placeholder {
+  color: rgb(255 255 255 / 0.5);
+}
+.auth-glass input:focus {
+  border-color: #f08a4b;
+  box-shadow: 0 0 0 3px rgb(240 138 75 / 0.25);
+}
+.auth-glass label {
+  color: rgb(255 255 255 / 0.9);
+  padding-left: 4px;
+}
+.auth-glass button[type="submit"] {
+  min-height: 50px;
+  border-radius: 9999px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow:
+    0 12px 28px -6px rgb(224 112 46 / 0.6),
+    inset 0 1px 1px rgb(255 255 255 / 0.35);
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
