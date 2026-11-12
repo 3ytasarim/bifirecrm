@@ -38,6 +38,11 @@ erDiagram
   projects ||--o{ tasks : ""
 
   integration_connections ||--o{ integration_events : ""
+  contacts ||--o{ conversations : "WhatsApp / Instagram"
+  leads ||--o{ conversations : "tanınmayan gönderen"
+  conversations ||--o{ messages : ""
+  whatsapp_templates ||--o{ messages : "giden şablon"
+  integration_credentials }o--|| users : "Google (şifreli refresh token)"
   integration_events ||--o{ integration_jobs : ""
   external_id_mappings }o--|| contacts : "provider+externalId tekil"
 
@@ -51,6 +56,9 @@ erDiagram
 - `webhook_nonces (nonce)` birincil anahtar → imzalı isteğin birebir tekrarı reddedilir; süresi geçenleri worker siler.
 - `internal_notifications (userId, dedupeKey)` tekil → aynı hatırlatma iki kez gitmez.
 - `opportunities.contactId` / `projects.contactId` / `quotes.contactId` → `RESTRICT` (müşteri silinirse iş kaydı kopmaz; müşteri yalnız arşivlenir `deletedAt`).
+- `conversations (channel, externalThreadId)` ve `messages (conversationId, externalMessageId)` tekil → gelen mesaj bir kez yazılır.
+- `whatsapp_templates (name, language)` tekil; Meta'dan senkronlanır, elle düzenlenmez.
+- `integration_credentials (provider, key)` tekil; değer AES-256-GCM şifreli.
 - `pg_trgm` GIN indeksi `contacts.fullName` üzerinde (bulanık arama).
 - Para: `Decimal(14,2)` + `currency`.
 
@@ -76,7 +84,8 @@ Tümü: oturum + `requirePermission` + satır kapsamı (`scope.ts`) + Zod doğru
 | Takvim | `saveAppointmentAction`, `appointmentStatusAction` | `calendar.manage` (görme: `calendar.view` / `calendar.view_all`) |
 | Şablonlar | `saveTemplateAction`, `toggleTemplateAction` | `templates.manage` |
 | Raporlar | (salt okunur sayfa, `services/reports.ts`) | `reports.view` |
-| Entegrasyon | `retry` (iş kuyruğu) | `integrations.manage` |
+| Entegrasyon | `retry` (iş kuyruğu), `syncTemplates` (WhatsApp şablon senkronu), Google bağla/kaldır | `integrations.manage` |
+| Mesajlar | `sendTemplateAction` (onaylı WhatsApp şablonu), `assignConversationAction` | `messages.send` (görme: `messages.view`) |
 
 ## HTTP uç noktaları
 
@@ -88,7 +97,8 @@ Tümü: oturum + `requirePermission` + satır kapsamı (`scope.ts`) + Zod doğru
 | GET | `/api/quotes/{id}/pdf` | Teklif PDF'i: gönderilmişse depodaki değişmez dosya, değilse anlık üretim (Taslak / Onay bekliyor filigranı). Oturum + `quoteScope` + denetim (`quote_pdf`) | Faz 3 ✓ |
 | POST | `/api/v1/intake/website` | Site → CRM form başvurusu (JSON, fotoğraf base64 aynı gövdede, en fazla 3 × 10 MB). Başlıklar: `X-Bifire-Timestamp` (unix sn, ±5 dk), `X-Bifire-Nonce` (16–64 `[A-Za-z0-9_-]`, `webhook_nonces` ile tekrar reddi → 409), `X-Bifire-Signature` = `v1=` + hex(HMAC-SHA256(secret, `ts.nonce.rawBody`)). Yanıt: 202 yeni / 200 `duplicate:true` / 401 imza / 413 / 422 / 503 yapılandırılmadı | Faz 2 ✓ |
 | POST | `/api/v1/intake/website/status` | Mutabakat: `{ submissionIds: [...] }` → `{ received: [...] }` (yalnız kimlik, kişisel veri yok). Aynı imza kuralları | Faz 2 ✓ |
-| GET/POST | `/api/v1/webhooks/meta` | Meta Lead Ads / Instagram / WhatsApp Cloud (doğrulama token + `X-Hub-Signature-256`) | Faz 4 |
-| GET | `/api/v1/oauth/google/callback` | Google Calendar bağlantısı (state + PKCE) | Faz 4 |
+| GET/POST | `/api/v1/webhooks/meta` | Meta Lead Ads / Instagram / WhatsApp Cloud. GET: `hub.mode=subscribe` + `hub.verify_token` → `hub.challenge` (403 yanlış token). POST: `X-Hub-Signature-256` (401), 1 MB (413), yapılandırılmadı (503); geçerli istek her zaman 200 `{received, duplicate}` (Meta yeniden denemesin) | Faz 4 ✓ |
+| GET | `/api/v1/oauth/google/start` | Oturum + `integrations.manage`; PKCE + state çerezi → Google onay ekranı | Faz 4 ✓ |
+| GET | `/api/v1/oauth/google/callback` | state + PKCE doğrulaması, refresh token şifreli saklanır → `/entegrasyonlar?google=…` | Faz 4 ✓ |
 
 Hata biçimi (tüm JSON uç noktaları): `{ "error": { "code": "invalid_signature", "message": "…" } }`.

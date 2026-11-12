@@ -7,6 +7,7 @@ import { assertCan, ForbiddenError, type Actor } from "@/lib/rbac/assert";
 import { appointmentScope, contactScope, opportunityScope, projectScope } from "@/lib/rbac/scope";
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_TYPE_LABELS, STAGE_LABELS, STAGE_ORDER } from "@/lib/labels";
 import { fmtDateTime } from "@/lib/format";
+import { enqueueCalendarSync } from "./calendar-sync";
 import { RuleError } from "@/lib/errors";
 
 /**
@@ -114,6 +115,7 @@ export async function createAppointment(actor: Actor, i: AppointmentInput) {
     await t.activity.create({ data: { type: "SYSTEM", subject: `Randevu: ${summaryOf(i)}`, body: i.location, actorId: actor.id, contactId: i.contactId, opportunityId: i.opportunityId, projectId: i.projectId } });
     await advanceForSurvey(t, i, actor.id);
     await audit({ actorId: actor.id, action: "appointment_created", entityType: "appointment", entityId: created.id, summary: summaryOf(i) }, t);
+    await enqueueCalendarSync(t, created.id);
     return created;
   });
   if (i.assignedUserId && i.assignedUserId !== actor.id) {
@@ -164,6 +166,7 @@ export async function updateAppointment(actor: Actor, id: string, i: Appointment
       },
       t,
     );
+    await enqueueCalendarSync(t, id);
     return { before, after };
   });
   const moved = before.startAt?.getTime() !== after.startAt?.getTime() || before.status !== after.status;
@@ -184,6 +187,7 @@ export async function setAppointmentStatus(actor: Actor, id: string, status: App
     await advanceForSurvey(t, updated, actor.id);
     await t.activity.create({ data: { type: "SYSTEM", subject: `Randevu ${APPOINTMENT_STATUS_LABELS[status].toLocaleLowerCase("tr-TR")}: ${summaryOf(a)}`, actorId: actor.id, contactId: a.contactId, opportunityId: a.opportunityId, projectId: a.projectId } });
     await audit({ actorId: actor.id, action: "appointment_status", entityType: "appointment", entityId: id, summary: `${summaryOf(a)} → ${APPOINTMENT_STATUS_LABELS[status]}`, before: { status: a.status }, after: { status } }, t);
+    await enqueueCalendarSync(t, id);
     return updated;
   });
 }

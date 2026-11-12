@@ -58,9 +58,23 @@ Takvim (randevu + keşif), teklif oluşturma (kalemler, KDV, PDF, onay akışı,
   - [x] satış rolü: raporlar → /yetkisiz (veri HTML'e sızmıyor), şablon düzenleme yok; CSP başlığında nonce, konsolda ihlal yok
   - [x] kalite kapıları: `lint`, `tsc`, 49 birim testi, `next build`
 
-## Faz 4 — Kanal entegrasyonları ⬜ (hesap/token gerekir)
-Meta Lead Ads, Instagram DM, WhatsApp Cloud API, Google Calendar.
+## Faz 4 — Kanal entegrasyonları ✅ kod hazır (2026-11-12) · gerçek hesap testi bekliyor
+Meta Lead Ads, Instagram DM, WhatsApp Cloud API (ayrı numara), Google Calendar.
 - **Kabul:** gerçek test hesabından gelen olay tek kez işlenir; token süresi dolunca durum "Hata" + bildirim; giden mesaj yalnız onaylı şablonla.
+- **Webhook:** `/api/v1/webhooks/meta` tek uç (GET abonelik doğrulaması `META_VERIFY_TOKEN`; POST `X-Hub-Signature-256` = HMAC-SHA256(app secret, ham gövde)). Her olay tekil anahtarla (`leadgen:<id>`, `ig:<mid>`, `wa:<wamid>`, `wa-status:<id>:<durum>`, `wa-template:…`) `integration_events`'e yazılır ve aynı transaction'da kuyruğa alınır; tekrar gelen bildirim `duplicate` sayılır. Ağır iş (Graph çağrısı) worker'da.
+- **Lead Ads:** worker lead'i Graph'tan çeker → web formuyla aynı `ingestInboundLead` katmanı (çift kayıt kontrolü, sorumlu, bildirim). KVKK aydınlatması Meta formundan varsayılmaz.
+- **Mesajlar:** `/mesajlar` (liste, yazışma, atama, okundu). Gelen WhatsApp/Instagram mesajı müşteriye bağlanır (talep → kanal → tek telefon eşleşmesi); bağlanamazsa bir kez "Talep" açılır. Instagram yalnız gelen + kendi yanıt yankısı; medya indirilmez (yer tutucu).
+- **WhatsApp gönderim:** yalnız Meta'da APPROVED ve gövde değişkenli şablon (medya başlık / URL düğmeli şablon desteklenmez). MARKETING için son `MARKETING_WHATSAPP` onayı GRANTED olmalı (onay kaydı arayüzü yok → pazarlama şablonları şimdilik engelli); UTILITY için müşteri yazmış ya da KVKK aydınlatması kayıtlı olmalı. Bağlantı Hata/Kapalı ise gönderim yok; 30 gönderim/10 dk/kullanıcı. Durumlar geri gitmez (gönderildi → iletildi → okundu).
+- **Google Calendar:** OAuth + PKCE (S256) + state (şifreli HttpOnly çerez), yalnız `calendar.events` kapsamı; refresh token `integration_credentials`'ta AES-GCM şifreli. Randevu oluştur/güncelle/iptal → kuyruk → deterministik etkinlik kimliği (çift etkinlik yok). Katılımcı ve telefon yazılmaz.
+- **Bağlantı durumu** yalnız gerçek sonuçtan: başarılı API çağrısı ya da imzalı olay → Aktif; yetki hatası (190/102/10/200-299, 401, `invalid_grant`) → Hata + yöneticilere günlük tek bildirim; worker saatte bir sağlık kontrolü yapar. Yapılandırılmamış kanal "Yapılandırılmadı" görünür, eksik `.env` anahtar adları listelenir.
+- Kabul testleri (yerel dev, sahte imzalı olaylar + sahte Graph/Google sunucusu, QA verisi sonra silindi):
+  - [x] `scripts/qa-channels.ts` 54 kontrol: aynı leadgen/mesaj 3 kez gelse de tek talep/mesaj, Graph bir kez çağrıldı; bozuk imza 401, yanlış verify token 403
+  - [x] token süresi doldu (190) → bağlantı Hata + yönetici bildirimi, aynı gün ikinci bildirim yok; bu sırada gelen olay RETRY'da bekliyor, kaybolmuyor
+  - [x] onaysız/PENDING/medyalı şablon, eksik/boş parametre, rızasız pazarlama, hiç yazmamış kişiye UTILITY → reddedildi ve boş yazışma açılmadı; onaylı şablon gönderildi, durumlar sırayla ilerledi
+  - [x] Google: randevu → tek etkinlik, güncelleme PATCH, iptal DELETE; iptal edilen erişim → Hata + bildirim; web formu gerileme kontrolü geçti
+  - [x] tarayıcı: Entegrasyonlar (eksik anahtarlar, adresler), Mesajlar, yazışma (WhatsApp yapılandırılmamışken form gizli), müşteri kartı yazışmaları; webhook yapılandırılmadan 503
+  - [x] kalite kapıları: `lint`, `tsc`, 62 birim testi, `next build`
+  - [ ] **Gerçek hesap testi** (Meta Business + uygulama, WhatsApp ayrı numara, Google Cloud OAuth istemcisi; CRM'in internetten erişilebilir olması gerekir) — `DEPLOY.md` › Faz 4
 
 ## Faz 5 — Canlıya geçiş ⬜ (onay gerekir)
 Sunucu (PM2 web + worker), nginx + TLS, S3 özel bucket, ClamAV, SMTP, günlük şifreli yedek + geri yükleme tatbikatı, izleme (health + uptime), production DB (ayrı Neon branch/proje), ilk süper yönetici `create-admin`.

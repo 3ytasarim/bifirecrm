@@ -23,6 +23,22 @@ const schema = z.object({
   SMTP_FROM: z.string().optional(),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().max(100).default(20),
   WEBSITE_HMAC_SECRET: z.string().optional(),
+  // Faz 4 — Meta (Lead Ads, Instagram, WhatsApp). Boşsa kanal "Yapılandırılmadı" kalır.
+  META_APP_SECRET: z.string().optional(),
+  META_VERIFY_TOKEN: z.string().optional(),
+  META_ACCESS_TOKEN: z.string().optional(),
+  META_GRAPH_VERSION: z.string().regex(/^v\d+\.\d+$/).default("v23.0"),
+  INSTAGRAM_ACCOUNT_ID: z.string().optional(),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().optional(),
+  // Faz 4 — Google Takvim (OAuth istemcisi; yenileme anahtarı DB'de şifreli).
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  // Yalnız geliştirme/QA: sahte API sunucusuna yönlendirme. Production'da yok sayılır.
+  META_GRAPH_URL: z.string().url().optional(),
+  GOOGLE_OAUTH_URL: z.string().url().optional(),
+  GOOGLE_API_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

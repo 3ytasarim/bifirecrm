@@ -37,6 +37,8 @@ export const PERMISSIONS = {
   "calendar.view_all": "Tüm randevuları görüntüle",
   "calendar.manage": "Randevu / keşif oluştur ve güncelle",
   "templates.manage": "Mesaj şablonlarını yönet",
+  "messages.view": "WhatsApp / Instagram yazışmalarını görüntüle",
+  "messages.send": "Onaylı WhatsApp şablonu gönder / yazışma ata",
   "reports.view": "Raporları görüntüle",
   "leads.view": "Gelen talepleri görüntüle",
   "leads.process": "Talepleri işle (fırsata dönüştür / reddet)",
@@ -74,6 +76,7 @@ const sales: Permission[] = [
   "leads.view", "leads.process",
   "quotes.view", "quotes.create", "quotes.send",
   "calendar.view", "calendar.manage",
+  "messages.view", "messages.send",
 ];
 
 const technical: Permission[] = [
@@ -95,6 +98,7 @@ const readOnly: Permission[] = [
   "projects.view", "projects.view_all",
   "tasks.view_all", "leads.view", "files.download",
   "quotes.view", "calendar.view", "calendar.view_all", "reports.view",
+  "messages.view",
 ];
 
 const manager: Permission[] = ALL_PERMISSIONS.filter((p) => !LOCKED_PERMISSIONS.includes(p) && p !== "settings.manage");

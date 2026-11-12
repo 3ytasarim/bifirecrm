@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireActor } from "@/lib/rbac/guard";
-import { contactScope, opportunityScope, projectScope } from "@/lib/rbac/scope";
-import { CHANNEL_LABELS, FIREPLACE_LABELS, PROJECT_STAGE_LABELS, SOURCE_LABELS, STAGE_LABELS } from "@/lib/labels";
+import { contactScope, conversationScope, opportunityScope, projectScope } from "@/lib/rbac/scope";
+import { CHANNEL_LABELS, FIREPLACE_LABELS, MESSAGE_CHANNEL_LABELS, PROJECT_STAGE_LABELS, SOURCE_LABELS, STAGE_LABELS } from "@/lib/labels";
 import { code, fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
 import { formatPhone } from "@/lib/normalize";
 import { Badge, Card, DefList, EmptyState, PageHeader, Tabs } from "@/components/ui/primitives";
@@ -46,6 +46,9 @@ export default async function ContactDetail({ params, searchParams }: { params: 
     notFound();
   }
 
+  const conversations = actor.perms.has("messages.view")
+    ? await prisma.conversation.findMany({ where: { contactId: id, ...conversationScope(actor) }, orderBy: { lastMessageAt: { sort: "desc", nulls: "last" } }, take: 10, select: { id: true, channel: true, lastMessageAt: true, unreadCount: true } })
+    : [];
   const [opps, projects, counts] = await Promise.all([
     prisma.opportunity.findMany({
       where: { contactId: id, ...opportunityScope(actor) },
@@ -161,6 +164,37 @@ export default async function ContactDetail({ params, searchParams }: { params: 
                 <EmptyState title="Fırsat yok" description="Bu müşteriye ait satış fırsatı bulunmuyor." />
               )}
             </Card>
+            {actor.perms.has("messages.view") ? (
+              <Card
+                title="Yazışmalar"
+                padded={false}
+                actions={
+                  actor.perms.has("messages.send") ? (
+                    <Link href={`/mesajlar/gonder?musteri=${id}`} className={buttonClass("secondary", "sm")}>
+                      WhatsApp şablonu gönder
+                    </Link>
+                  ) : null
+                }
+              >
+                {conversations.length ? (
+                  <ul className="divide-y divide-line">
+                    {conversations.map((cv) => (
+                      <li key={cv.id}>
+                        <Link href={`/mesajlar/${cv.id}`} className="flex items-center justify-between gap-3 px-5 py-3 text-sm hover:bg-surface-2/50">
+                          <span className="font-medium">{MESSAGE_CHANNEL_LABELS[cv.channel]}</span>
+                          <span className="text-xs text-muted">
+                            {cv.unreadCount ? `${cv.unreadCount} okunmamış · ` : ""}
+                            {cv.lastMessageAt ? fmtDateTime(cv.lastMessageAt) : "—"}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <EmptyState title="Yazışma yok" description="WhatsApp / Instagram mesajları bu müşteriyle eşleşince burada görünür." />
+                )}
+              </Card>
+            ) : null}
           </div>
           <Card title="KVKK ve izinler">
             <DefList

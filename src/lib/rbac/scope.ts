@@ -75,3 +75,13 @@ export function appointmentScope(a: ScopeActor): Prisma.AppointmentWhereInput {
     OR: [{ assignedUserId: a.id }, { createdById: a.id }, { opportunity: { ownerId: a.id, deletedAt: null } }, { project: projectMember(a.id) }],
   };
 }
+
+/**
+ * Yazışma: messages.view şart. Tüm müşterileri gören herkesi görür; diğerleri yalnız erişebildiği müşterinin,
+ * kendisine atanmış ya da henüz müşteriye bağlanmamış (ekip gelen kutusu) yazışmaları görür.
+ */
+export function conversationScope(a: ScopeActor): Prisma.ConversationWhereInput {
+  if (!a.perms.has("messages.view")) return { id: { in: [] } };
+  if (a.perms.has("contacts.view_all")) return {};
+  return { OR: [{ contactId: null }, { assignedUserId: a.id }, { contact: contactScope(a) }] };
+}

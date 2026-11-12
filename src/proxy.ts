@@ -4,8 +4,10 @@ import { NextResponse, type NextRequest } from "next/server";
  * Hızlı ön kontrol: oturum çerezi yoksa girişe yönlendir. Gerçek doğrulama (oturum geçerliliği, rol, satır yetkisi)
  * her sayfada ve action'da sunucu tarafında yapılır; bu katman yalnız gereksiz render'ı önler.
  */
-const PUBLIC = [/^\/giris/, /^\/sifremi-unuttum/, /^\/sifre-belirle/, /^\/api\/health/, /^\/api\/v1\/intake\//, /^\/yetkisiz/];
+const PUBLIC = [/^\/giris/, /^\/sifremi-unuttum/, /^\/sifre-belirle/, /^\/api\/health/, /^\/api\/v1\/intake\//, /^\/api\/v1\/webhooks\/meta$/, /^\/yetkisiz/];
 // /api/v1/intake/* oturumsuzdur ama HMAC imzası + zaman penceresi + nonce ile korunur (lib/integrations/website-request.ts).
+// /api/v1/webhooks/meta oturumsuzdur ama X-Hub-Signature-256 (Meta uygulama sırrı) doğrulanmadan gövde işlenmez.
+// /api/v1/oauth/google/* oturum ister (PUBLIC değil) ve route içinde ayrıca integrations.manage izni denetlenir.
 
 /**
  * Nonce tabanlı CSP: her istekte yeni nonce; Next.js istek başlığındaki CSP'den nonce'u okuyup kendi satır içi

@@ -6,6 +6,7 @@ export type NavItem = { href: string; label: string; icon: string; perm?: Permis
 export const NAV: NavItem[] = [
   { href: "/", label: "Genel Bakış", icon: "LayoutDashboard" },
   { href: "/talepler", label: "Talepler", icon: "Inbox", perm: "leads.view" },
+  { href: "/mesajlar", label: "Mesajlar", icon: "MessageCircle", perm: "messages.view" },
   { href: "/musteriler", label: "Müşteriler", icon: "Users", anyPerm: ["contacts.view", "contacts.view_all"] },
   { href: "/firsatlar", label: "Satış Fırsatları", icon: "KanbanSquare", anyPerm: ["opportunities.view", "opportunities.view_all"] },
   { href: "/teklifler", label: "Teklifler", icon: "FileText", perm: "quotes.view" },

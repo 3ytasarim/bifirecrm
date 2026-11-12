@@ -45,6 +45,17 @@ Migration'lar yalnız **ekleyici** (kolon/tablo ekleme) tutulur; silme/yeniden a
 7. 48 saat izle: CRM › Entegrasyonlar (dead-letter = 0), `logs/crm-forward.log` (hata=0).
 8. Geri alma: site `.env` `CRM_FORWARD_ENABLED=false` + `pm2 restart <site> --update-env`. Site DB'sine hiçbir şey eklenmediği için başka adım yok.
 
+## Faz 4: kanalları bağlama (onayla, CRM canlıda ve https ile erişilebilirken)
+Gizli değerler yalnız sunucu `.env`'ine yazılır; her adımdan sonra `pm2 restart bifire-crm bifire-crm-worker --update-env`.
+1. **Meta uygulaması** (developers.facebook.com, Business türü, Bifire Business hesabına bağlı): App secret → `META_APP_SECRET`; rastgele bir `META_VERIFY_TOKEN` üret.
+2. **Webhook:** Callback URL `https://crm.bifiresomine.com/api/v1/webhooks/meta`, verify token aynı değer. Abonelikler: Page → `leadgen`; Instagram → `messages`; WhatsApp Business Account → `messages`, `message_template_status_update`.
+3. **Lead Ads:** sayfaya erişimli System User token'ı (`leads_retrieval`, `pages_manage_metadata`, `pages_show_list`) → `META_ACCESS_TOKEN`; uygulamayı sayfaya abone et. Meta'nın "Lead Ads Testing Tool"u ile bir test lead'i gönder → CRM › Talepler'de bir kez görünmeli.
+4. **Instagram DM:** Instagram profesyonel hesap kimliği → `INSTAGRAM_ACCOUNT_ID` (`instagram_manage_messages`). Test hesabından DM → CRM › Mesajlar.
+5. **WhatsApp (ayrı numara):** numarayı WhatsApp Business hesabına ekle ve doğrula; `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`, kalıcı System User token'ı (`whatsapp_business_messaging`, `whatsapp_business_management`) → `WHATSAPP_ACCESS_TOKEN`. Şablonları Meta'da oluştur/onaylat → CRM › Entegrasyonlar › "Meta'dan senkronize et". Test numarasından yaz → yazışma görünmeli; onaylı UTILITY şablonla yanıt gönder → durum "İletildi/Okundu".
+6. **Google Calendar:** Google Cloud'da OAuth istemcisi (Web), yetkili yönlendirme adresi `https://crm.bifiresomine.com/api/v1/oauth/google/callback`, kapsam yalnız `calendar.events` → `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. CRM › Entegrasyonlar › "Google ile bağlan". Bir randevu oluştur/değiştir/iptal et → takvimde tek etkinlik olarak izle.
+7. **Kabul:** aynı test olayını Meta'dan "yeniden gönder" → CRM'de çift kayıt yok; token'ı iptal et → Entegrasyonlar'da "Hata" + bildirim; onaysız şablon gönderilemiyor.
+8. Geri alma: ilgili `.env` anahtarlarını boşalt + restart → kanal "Yapılandırılmadı", webhook 503 (Meta yeniden dener; olay kaybolmaz, kısa süre içinde açılırsa işlenir). Google için Entegrasyonlar › "Bağlantıyı kaldır" (token Google'da da iptal edilir).
+
 ## Kontrol listesi (canlı sonrası)
 - [ ] `/api/health` 200, `X-Robots-Tag: noindex`, HSTS başlığı
 - [ ] Davet → şifre → giriş → MFA kurulumu

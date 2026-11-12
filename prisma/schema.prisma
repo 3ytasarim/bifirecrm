@@ -216,6 +216,27 @@ enum IntegrationProvider {
   WHATSAPP
   INSTAGRAM_DM
   SMTP
+  GOOGLE_CALENDAR
+}
+
+enum MessageChannel {
+  WHATSAPP
+  INSTAGRAM
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  RECEIVED
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
 }
 
 enum ConnectionStatus {
@@ -418,6 +439,7 @@ model Contact {
   quotes        Quote[]
   attachments   Attachment[]
   consentEvents ConsentEvent[]
+  conversations Conversation[]
 
   @@index([primaryPhone])
   @@index([primaryEmail])
@@ -491,6 +513,7 @@ model Lead {
   contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
   opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
   attachments Attachment[]
+  conversations Conversation[]
 
   @@unique([source, sourceSubmissionId])
   @@index([status, receivedAt])
@@ -1035,4 +1058,96 @@ model WebhookNonce {
 
   @@index([expiresAt])
   @@map("webhook_nonces")
+}
+
+// ───────────────────────────── Faz 4: kanallar ─────────────────────────────
+
+/// Müşteriyle tek kanal üzerindeki yazışma (WhatsApp numarası ya da Instagram kullanıcısı başına bir kayıt).
+model Conversation {
+  id               String         @id @default(uuid(7)) @db.Uuid
+  channel          MessageChannel
+  /// WhatsApp: wa_id (ülke kodlu numara, + olmadan) · Instagram: IGSID (hesaba özel kullanıcı kimliği).
+  externalThreadId String
+  displayName      String?
+  /// Yalnız WhatsApp: E.164.
+  phone            String?
+  contactId        String?        @db.Uuid
+  /// Müşteriye bağlanmamış yazışma için açılan bekleyen talep (Talepler ekranından işlenir).
+  leadId           String?        @db.Uuid
+  assignedUserId   String?        @db.Uuid
+  lastMessageAt    DateTime?      @db.Timestamptz
+  lastInboundAt    DateTime?      @db.Timestamptz
+  unreadCount      Int            @default(0)
+  createdAt        DateTime       @default(now()) @db.Timestamptz
+  updatedAt        DateTime       @updatedAt @db.Timestamptz
+
+  contact  Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  messages Message[]
+
+  @@unique([channel, externalThreadId])
+  @@index([lastMessageAt])
+  @@index([contactId])
+  @@map("conversations")
+}
+
+model Message {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  conversationId    String           @db.Uuid
+  direction         MessageDirection
+  /// Sağlayıcının mesaj kimliği (WhatsApp wamid / Instagram mid). Giden mesajda gönderimden sonra dolar.
+  externalMessageId String?
+  /// text, image, audio, video, document, location, template, reaction, unsupported …
+  type              String
+  body              String?
+  templateId        String?          @db.Uuid
+  templateParams    Json?
+  status            MessageStatus
+  error             String?
+  sentById          String?          @db.Uuid
+  occurredAt        DateTime         @default(now()) @db.Timestamptz
+  createdAt         DateTime         @default(now()) @db.Timestamptz
+  updatedAt         DateTime         @updatedAt @db.Timestamptz
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, externalMessageId])
+  @@index([externalMessageId])
+  @@index([conversationId, occurredAt])
+  @@map("messages")
+}
+
+/// Meta'daki WhatsApp mesaj şablonlarının yerel kopyası (Graph API'den senkronlanır). Yalnız APPROVED olan gönderilir.
+model WhatsappTemplate {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  name       String
+  language   String
+  /// MARKETING | UTILITY | AUTHENTICATION
+  category   String
+  /// APPROVED | PENDING | REJECTED | PAUSED | DISABLED …
+  status     String
+  body       String
+  paramCount Int      @default(0)
+  externalId String?
+  syncedAt   DateTime @db.Timestamptz
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @updatedAt @db.Timestamptz
+
+  @@unique([name, language])
+  @@map("whatsapp_templates")
+}
+
+/// OAuth ile alınan kimlik bilgileri (ör. Google yenileme anahtarı). DATA_ENCRYPTION_KEY ile AES-256-GCM şifreli; düz metin tutulmaz.
+model IntegrationCredential {
+  id          String              @id @default(uuid(7)) @db.Uuid
+  provider    IntegrationProvider
+  key         String
+  ciphertext  String
+  expiresAt   DateTime?           @db.Timestamptz
+  createdById String?             @db.Uuid
+  createdAt   DateTime            @default(now()) @db.Timestamptz
+  updatedAt   DateTime            @updatedAt @db.Timestamptz
+
+  @@unique([provider, key])
+  @@map("integration_credentials")
 }

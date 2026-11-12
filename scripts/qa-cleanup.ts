@@ -2,6 +2,8 @@
  * YALNIZ GELİŞTİRME/STAGING: QA testinde oluşan kayıtları KİMLİKLE siler (liste sırasıyla asla).
  * Kapsam: @example.test e-postalı kullanıcılar + "QA " ile başlayan / @example.test e-postalı müşteriler ve bağlı kayıtları,
  * aynı kimlikteki talepler (leads) ve test istemcisinin "qa" önekli web olayları (gerçek site kimlikleri cuid: "c…").
+ * Faz 4: "qa" kimlikli Meta/WhatsApp/Instagram olayları, QA müşterisine bağlı ya da "QA " adlı / "qa" kimlikli yazışmalar,
+ * "qa_" şablonları, QA kullanıcısının bağladığı Google kimlik bilgisi, bu kayıtlara ait iş kuyruğu satırları ve bildirimler.
  *
  *   npx tsx --conditions=react-server scripts/qa-cleanup.ts            # kuru çalıştırma (yalnız sayar)
  *   npx tsx --conditions=react-server scripts/qa-cleanup.ts --apply    # siler
@@ -28,7 +30,15 @@ async function main() {
     select: { id: true },
   });
   const leadIds = leads.map((l) => l.id);
-  const events = await prisma.integrationEvent.findMany({ where: { provider: "BIFIRE_WEBSITE", OR: [{ externalEventId: { startsWith: "qa" } }, { leadId: { in: leadIds } }] }, select: { id: true } });
+  const convs = await prisma.conversation.findMany({ where: { OR: [{ contactId: { in: contactIds } }, { displayName: { startsWith: "QA " } }, { displayName: { startsWith: "@qa_" } }, { externalThreadId: { startsWith: "qa" } }, { leadId: { in: leadIds } }] }, select: { id: true, leadId: true } });
+  const convIds = convs.map((c) => c.id);
+  const convLeads = await prisma.lead.findMany({ where: { OR: [{ id: { in: convs.map((c) => c.leadId).filter((x): x is string => Boolean(x)) } }, { sourceSubmissionId: { in: convIds.map((id) => `conv:${id}`) } }] }, select: { id: true } });
+  for (const l of convLeads) if (!leadIds.includes(l.id)) leadIds.push(l.id);
+  const messageIds = (await prisma.message.findMany({ where: { conversationId: { in: convIds } }, select: { id: true } })).map((m) => m.id);
+  const events = await prisma.integrationEvent.findMany({
+    where: { OR: [{ provider: "BIFIRE_WEBSITE", OR: [{ externalEventId: { startsWith: "qa" } }, { leadId: { in: leadIds } }] }, { provider: { in: ["META_LEAD_ADS", "WHATSAPP", "INSTAGRAM_DM"] }, OR: [{ externalEventId: { contains: ":qa" } }, { externalEventId: { contains: ".qa_" } }, { leadId: { in: leadIds } }] }] },
+    select: { id: true },
+  });
   const eventIds = events.map((e) => e.id);
   const files = await prisma.attachment.findMany({ where: { OR: [{ contactId: { in: contactIds } }, { opportunityId: { in: oppIds } }, { leadId: { in: leadIds } }] }, select: { id: true, storageKey: true, thumbnailKey: true } });
   const quotes = await prisma.quote.findMany({ where: { OR: [{ contactId: { in: contactIds } }, { opportunityId: { in: oppIds } }] }, select: { id: true, pdfAttachmentId: true } });
@@ -36,12 +46,20 @@ async function main() {
   const appointments = await prisma.appointment.findMany({ where: { OR: [{ contactId: { in: contactIds } }, { createdById: { in: userIds } }, { assignedUserId: { in: userIds } }] }, select: { id: true } });
   const appointmentIds = appointments.map((a) => a.id);
   const templates = await prisma.messageTemplate.findMany({ where: { name: { startsWith: "QA " } }, select: { id: true } });
+  const waTemplates = await prisma.whatsappTemplate.findMany({ where: { name: { startsWith: "qa_" } }, select: { id: true } });
+  const googleCred = await prisma.integrationCredential.findMany({ where: { provider: "GOOGLE_CALENDAR", createdById: { in: userIds } }, select: { id: true } });
+  // Olaysız işler (gönderim / takvim senkronu) yükteki kimlikle bulunur.
+  const looseJobs = (
+    await prisma.$queryRaw<{ id: string }[]>`SELECT id::text FROM integration_jobs WHERE (type = 'whatsapp.send' AND payload->>'messageId' = ANY(${messageIds})) OR (type = 'gcal.sync_appointment' AND payload->>'appointmentId' = ANY(${appointmentIds}))`
+  ).map((j) => j.id);
   const templateIds = templates.map((t) => t.id);
   const ownerSetting = await prisma.setting.findUnique({ where: { key: "intake.website_owner_id" } });
   const ownerIsQa = typeof ownerSetting?.value === "string" && userIds.includes(ownerSetting.value);
   const entityIds = [...userIds, ...contactIds, ...oppIds, ...leadIds, ...quoteIds, ...appointmentIds, ...templateIds, ...files.map((f) => f.id)];
 
-  console.log({ users: users.map((u) => u.email), contacts: contacts.map((c) => c.fullName), opportunities: oppIds.length, leads: leadIds.length, webEvents: eventIds.length, quotes: quoteIds.length, appointments: appointmentIds.length, templates: templateIds.length, files: files.length, ownerSetting: ownerIsQa });
+  const notifLinks = [...convIds.map((id) => `/mesajlar/${id}`), ...oppIds.map((id) => `/firsatlar/${id}`), ...leadIds.map((id) => `/talepler/yeni?talep=${id}`)];
+
+  console.log({ users: users.map((u) => u.email), contacts: contacts.map((c) => c.fullName), opportunities: oppIds.length, leads: leadIds.length, events: eventIds.length, quotes: quoteIds.length, appointments: appointmentIds.length, templates: templateIds.length, files: files.length, ownerSetting: ownerIsQa, conversations: convIds.length, messages: messageIds.length, waTemplates: waTemplates.length, googleCredential: googleCred.length, looseJobs: looseJobs.length });
   if (!apply) return console.log("Kuru çalıştırma. Silmek için --apply ekleyin.");
 
   const store = await storage();
@@ -50,6 +68,18 @@ async function main() {
     if (f.thumbnailKey) await store.delete(f.thumbnailKey).catch(() => undefined);
   }
   await prisma.$transaction([
+    prisma.conversation.deleteMany({ where: { id: { in: convIds } } }), // mesajlar cascade
+    prisma.whatsappTemplate.deleteMany({ where: { id: { in: waTemplates.map((t) => t.id) } } }),
+    prisma.integrationCredential.deleteMany({ where: { id: { in: googleCred.map((c) => c.id) } } }),
+    prisma.integrationJob.deleteMany({ where: { id: { in: looseJobs } } }),
+    // QA sahte sunucusunun izini taşıyan bağlantı durumları (sahte "Aktif" kalmasın).
+    prisma.integrationConnection.deleteMany({
+      where: {
+        provider: { in: ["META_LEAD_ADS", "WHATSAPP", "INSTAGRAM_DM", "GOOGLE_CALENDAR"] },
+        OR: [{ lastError: { contains: "QA sahte" } }, { config: { path: ["verifiedName"], equals: "QA Bifire" } }, { config: { path: ["accountEmail"], string_ends_with: "@example.test" } }],
+      },
+    }),
+    prisma.internalNotification.deleteMany({ where: { OR: [{ link: { in: notifLinks } }, { body: { contains: "QA sahte" } }] } }),
     prisma.appointment.deleteMany({ where: { id: { in: appointmentIds } } }),
     prisma.messageTemplate.deleteMany({ where: { id: { in: templateIds } } }),
     prisma.quote.deleteMany({ where: { id: { in: quoteIds } } }),

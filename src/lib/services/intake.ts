@@ -8,6 +8,7 @@ import { assertCan, type Actor } from "@/lib/rbac/assert";
 import { createContact, findDuplicateCandidates, recordConsents } from "./contacts";
 import { createOpportunity } from "./opportunities";
 import { SOURCE_LABELS } from "@/lib/labels";
+import { linkConversationsForLead } from "./channels";
 
 export type IntakeInput = {
   name: string;
@@ -110,6 +111,8 @@ export async function quickIntake(actor: Actor, input: IntakeInput): Promise<Int
         });
     // Talebin ekleri (ör. web formu fotoğrafı) müşteri ve fırsata bağlanır.
     if (input.leadId) await t.attachment.updateMany({ where: { leadId: lead.id }, data: { contactId, opportunityId: opp.id } });
+    // WhatsApp/Instagram mesajından açılmış talepse yazışma da bu müşteriye bağlanır.
+    if (input.leadId) await linkConversationsForLead(t, lead.id);
 
     const task = await t.task.create({
       data: {

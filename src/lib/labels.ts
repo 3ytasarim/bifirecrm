@@ -1,5 +1,7 @@
 import type {
   ActivityType,
+  MessageChannel,
+  MessageStatus,
   AttachmentKind,
   ChimneyStatus,
   FireplaceType,
@@ -219,7 +221,22 @@ export const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
   WHATSAPP: "WhatsApp Business Platform",
   INSTAGRAM_DM: "Instagram mesajları",
   SMTP: "E-posta (SMTP) — ekip bildirimleri",
+  GOOGLE_CALENDAR: "Google Takvim",
 };
+
+export const MESSAGE_CHANNEL_LABELS: Record<MessageChannel, string> = { WHATSAPP: "WhatsApp", INSTAGRAM: "Instagram" };
+
+export const MESSAGE_STATUS_LABELS: Record<MessageStatus, string> = {
+  RECEIVED: "Alındı",
+  QUEUED: "Sırada",
+  SENDING: "Gönderiliyor",
+  SENT: "Gönderildi",
+  DELIVERED: "İletildi",
+  READ: "Okundu",
+  FAILED: "Başarısız",
+};
+
+export const WA_TEMPLATE_CATEGORY_LABELS: Record<string, string> = { MARKETING: "Pazarlama", UTILITY: "Hizmet", AUTHENTICATION: "Doğrulama" };
 
 export const CONNECTION_STATUS_LABELS: Record<ConnectionStatus, string> = {
   NOT_CONFIGURED: "Yapılandırılmadı",
@@ -229,6 +246,12 @@ export const CONNECTION_STATUS_LABELS: Record<ConnectionStatus, string> = {
 };
 
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
+  whatsapp_send: "WhatsApp şablonu gönderildi",
+  whatsapp_template_sync: "WhatsApp şablon senkronu istendi",
+  conversation_assign: "Yazışma atandı",
+  google_calendar_connect: "Google Takvim bağlandı",
+  google_calendar_connect_failed: "Google Takvim bağlantısı başarısız",
+  google_calendar_disconnect: "Google Takvim bağlantısı kaldırıldı",
   login: "Giriş",
   login_failed: "Başarısız giriş",
   logout: "Çıkış",
