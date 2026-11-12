@@ -17,6 +17,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Yalnız geliştirme: Cloudflare quick tunnel üzerinden önizlemeye izin (üretimde etkisi yok).
+  allowedDevOrigins: ["*.trycloudflare.com"],
   experimental: {
     // Dosya yükleme sınırı (MAX_UPLOAD_MB × en fazla 10 dosya için pay). Nginx client_max_body_size ile uyumlu tutulmalı.
     serverActions: { bodySizeLimit: "60mb" },
