@@ -1,80 +1,107 @@
 @import "tailwindcss";
 
 /*
- * Bifire CRM tasarım sistemi — Bifire sitesinin taş + bronz + antrasit dilinin uygulama karşılığı.
- * Renkler CSS değişkeni; açık/koyu tema [data-theme] ile (varsayılan: sistem tercihi).
+ * Bifire CRM tasarım sistemi.
+ * Yerleşim: bulanık iç mekân fotoğrafı üzerinde koyu cam yan menü + buzlu cam içerik paneli; kartlar beyaz (açık) / dumanlı cam (koyu).
+ * Renkler: Bifire taş + bronz + antrasit, vurgu için kor turuncusu. Açık/koyu tema [data-theme] ile (varsayılan: sistem tercihi).
  */
 :root {
-  --bg: #f3f0e9;
-  --surface: #fbfaf7;
-  --surface-2: #efebe3;
-  --line: #ddd7cc;
-  --line-strong: #c9c1b3;
-  --fg: #262825;
-  --muted: #676860;
-  --accent: #92714e;
-  --accent-ink: #7a5a3a;
-  --accent-soft: #efe5d8;
+  --bg: #e9e3d9;
+  --surface: #ffffff;
+  --surface-2: #f4f0ea;
+  --line: #e7e0d5;
+  --line-strong: #d4cbbd;
+  --fg: #1f211d;
+  --muted: #696a61;
+  --accent: #9a6c42;
+  --accent-ink: #7b522e;
+  --accent-soft: #f6ebdf;
   --on-accent: #fffaf3;
+  --ember: #e0702e;
+  --ember-soft: #fdeee3;
   --danger: #b4372c;
-  --danger-soft: #f7e3df;
+  --danger-soft: #f9e6e2;
   --success: #2f7a4b;
-  --success-soft: #e0efe5;
-  --warning: #9a6a00;
-  --warning-soft: #f6ecd2;
+  --success-soft: #e3f1e8;
+  --warning: #8a5f00;
+  --warning-soft: #f8eed5;
   --info: #2d5f8b;
-  --info-soft: #e0eaf4;
-  --shadow: 0 1px 2px rgb(38 40 37 / 0.06), 0 4px 16px rgb(38 40 37 / 0.05);
+  --info-soft: #e3edf6;
+  --shadow: 0 1px 2px rgb(40 30 18 / 0.05), 0 6px 18px -6px rgb(40 30 18 / 0.12);
+  /* Kabuk */
+  --panel: rgb(250 248 244 / 0.8);
+  --panel-line: rgb(255 255 255 / 0.7);
+  --rail: rgb(28 27 24 / 0.74);
+  --rail-line: rgb(255 255 255 / 0.14);
+  --photo: url("/bg/interior.webp");
+  --photo-tint: linear-gradient(180deg, rgb(30 22 14 / 0.1), rgb(30 22 14 / 0.22));
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #181a17;
-    --surface: #20221f;
-    --surface-2: #272a26;
-    --line: #353831;
-    --line-strong: #484c44;
-    --fg: #ecebe6;
-    --muted: #a3a49b;
-    --accent: #bc9b78;
-    --accent-ink: #d9b388;
-    --accent-soft: #3a3127;
-    --on-accent: #1b1a17;
-    --danger: #ec7a6e;
-    --danger-soft: #3e2421;
-    --success: #6cc58f;
-    --success-soft: #1f3528;
-    --warning: #e3b64f;
-    --warning-soft: #3a3020;
-    --info: #79aee0;
-    --info-soft: #1f2e3c;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+    --bg: #11110f;
+    --surface: rgb(255 255 255 / 0.055);
+    --surface-2: rgb(255 255 255 / 0.08);
+    --line: rgb(255 255 255 / 0.1);
+    --line-strong: rgb(255 255 255 / 0.18);
+    --fg: #f1efe9;
+    --muted: #aeaca2;
+    --accent: #cfa476;
+    --accent-ink: #e6c299;
+    --accent-soft: rgb(207 164 118 / 0.16);
+    --on-accent: #17130e;
+    --ember: #f08a4b;
+    --ember-soft: rgb(240 138 75 / 0.16);
+    --danger: #f08a7e;
+    --danger-soft: rgb(240 138 126 / 0.14);
+    --success: #74cc97;
+    --success-soft: rgb(116 204 151 / 0.13);
+    --warning: #e8bd5a;
+    --warning-soft: rgb(232 189 90 / 0.13);
+    --info: #86b8e6;
+    --info-soft: rgb(134 184 230 / 0.13);
+    --shadow: 0 1px 1px rgb(255 255 255 / 0.04) inset, 0 8px 24px -10px rgb(0 0 0 / 0.6);
+    --panel: rgb(22 22 20 / 0.74);
+    --panel-line: rgb(255 255 255 / 0.12);
+    --rail: rgb(14 14 12 / 0.78);
+    --rail-line: rgb(255 255 255 / 0.12);
+    --photo: url("/bg/interior-night.webp");
+    --photo-tint: radial-gradient(circle at 20% 15%, rgb(240 138 75 / 0.12), transparent 45%);
     color-scheme: dark;
   }
 }
 
-:root[data-theme="dark"] {
-  --bg: #181a17;
-  --surface: #20221f;
-  --surface-2: #272a26;
-  --line: #353831;
-  --line-strong: #484c44;
-  --fg: #ecebe6;
-  --muted: #a3a49b;
-  --accent: #bc9b78;
-  --accent-ink: #d9b388;
-  --accent-soft: #3a3127;
-  --on-accent: #1b1a17;
-  --danger: #ec7a6e;
-  --danger-soft: #3e2421;
-  --success: #6cc58f;
-  --success-soft: #1f3528;
-  --warning: #e3b64f;
-  --warning-soft: #3a3020;
-  --info: #79aee0;
-  --info-soft: #1f2e3c;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+:root[data-theme="dark"],
+.force-dark {
+  --bg: #11110f;
+  --surface: rgb(255 255 255 / 0.055);
+  --surface-2: rgb(255 255 255 / 0.08);
+  --line: rgb(255 255 255 / 0.1);
+  --line-strong: rgb(255 255 255 / 0.18);
+  --fg: #f1efe9;
+  --muted: #aeaca2;
+  --accent: #cfa476;
+  --accent-ink: #e6c299;
+  --accent-soft: rgb(207 164 118 / 0.16);
+  --on-accent: #17130e;
+  --ember: #f08a4b;
+  --ember-soft: rgb(240 138 75 / 0.16);
+  --danger: #f08a7e;
+  --danger-soft: rgb(240 138 126 / 0.14);
+  --success: #74cc97;
+  --success-soft: rgb(116 204 151 / 0.13);
+  --warning: #e8bd5a;
+  --warning-soft: rgb(232 189 90 / 0.13);
+  --info: #86b8e6;
+  --info-soft: rgb(134 184 230 / 0.13);
+  --shadow: 0 1px 1px rgb(255 255 255 / 0.04) inset, 0 8px 24px -10px rgb(0 0 0 / 0.6);
+  --panel: rgb(22 22 20 / 0.74);
+  --panel-line: rgb(255 255 255 / 0.12);
+  --rail: rgb(14 14 12 / 0.78);
+  --rail-line: rgb(255 255 255 / 0.12);
+  --photo: url("/bg/interior-night.webp");
+  --photo-tint: radial-gradient(circle at 20% 15%, rgb(240 138 75 / 0.12), transparent 45%);
   color-scheme: dark;
 }
 
@@ -90,6 +117,8 @@
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
   --color-on-accent: var(--on-accent);
+  --color-ember: var(--ember);
+  --color-ember-soft: var(--ember-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-success: var(--success);
@@ -98,15 +127,20 @@
   --color-warning-soft: var(--warning-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
-  --font-sans: var(--font-dmsans), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-manrope), var(--font-dmsans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
   --shadow-card: var(--shadow);
   --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-html,
-body {
+html {
   background: var(--bg);
+  color: var(--fg);
+}
+
+/* Gövde saydam: aksi halde kendi zemini, altındaki sabit fotoğraf katmanını (body::before, z-index:-1) örter. */
+body {
+  background: transparent;
   color: var(--fg);
 }
 
@@ -115,8 +149,62 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Sabit fotoğraf zemini (sayfa kaydırılınca kıpırdamaz). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--photo-tint), var(--photo) center / cover no-repeat, var(--bg);
+}
+
+/* Koyu cam yan menü (iki temada da koyu, metin her zaman açık). */
+.glass-rail {
+  background: var(--rail);
+  border: 1.5px solid var(--rail-line);
+  box-shadow: 0 24px 60px -12px rgb(0 0 0 / 0.45);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  backdrop-filter: blur(32px) saturate(180%);
+  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+}
+.glass-rail * {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+}
+
+/* Buzlu cam içerik paneli. DİKKAT: backdrop-filter, position:fixed alt öğeler için kapsayıcı olur;
+   panel yalnız arka plan katmanında kullanılır (içerik onun kardeşi), diyaloglar etkilenmez. */
+.glass-panel {
+  background: var(--panel);
+  border: 1.5px solid var(--panel-line);
+  box-shadow: 0 30px 70px -20px rgb(0 0 0 / 0.35);
+  -webkit-backdrop-filter: blur(36px) saturate(170%);
+  backdrop-filter: blur(36px) saturate(170%);
+}
+
+/* Açılır menü / diyalog: okunur, hafif saydam. */
+.glass-pop {
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-rise {
+  animation: rise-in 0.6s var(--ease-premium) both;
+}
+
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ember);
   outline-offset: 2px;
   border-radius: 6px;
 }

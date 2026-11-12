@@ -174,7 +174,7 @@ function LostDialog({ reasons, onCancel, onConfirm }: { reasons: string[]; onCan
   const ref = useRef<HTMLSelectElement>(null);
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="lost-title" onKeyDown={(e) => e.key === "Escape" && onCancel()}>
-      <div className="w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-xl">
+      <div className="w-full max-w-md glass-pop rounded-2xl border border-line bg-[var(--panel)] p-6 shadow-xl">
         <h2 id="lost-title" className="font-display text-lg font-semibold">
           Kayıp nedeni
         </h2>

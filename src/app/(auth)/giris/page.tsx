@@ -11,7 +11,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   return (
     <>
-      <h1 className="mb-1 font-display text-xl font-semibold">Giriş yap</h1>
+      <h1 className="mb-1 font-display text-3xl font-bold tracking-tight">Giriş yap</h1>
       <p className="mb-6 text-sm text-muted">Ekip hesabınızla devam edin.</p>
       {sp.sifre === "tamam" ? (
         <p role="status" className="mb-4 rounded-lg border border-success/30 bg-success-soft px-3.5 py-2.5 text-sm text-success">

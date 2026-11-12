@@ -23,10 +23,17 @@ export function PageHeader({ title, description, actions, back }: { title: React
 
 export function Card({ children, className, title, actions, padded = true }: { children: ReactNode; className?: string; title?: ReactNode; actions?: ReactNode; padded?: boolean }) {
   return (
-    <section className={cn("rounded-xl border border-line bg-surface shadow-card", className)}>
+    <section className={cn("rounded-[22px] border border-line bg-surface shadow-card", className)}>
       {title || actions ? (
-        <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
-          {title ? <h2 className="font-display text-[15px] font-semibold">{title}</h2> : <span />}
+        <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+          {title ? (
+            <h2 className="flex items-center gap-2 font-display text-[15px] font-bold">
+              <span className="h-4 w-1 rounded-full bg-gradient-to-b from-accent to-ember" aria-hidden />
+              {title}
+            </h2>
+          ) : (
+            <span />
+          )}
           {actions}
         </div>
       ) : null}
@@ -83,17 +90,56 @@ export function Pagination({ page, pageCount, buildHref, total }: { page: number
   );
 }
 
-export function Stat({ label, value, hint, href, tone }: { label: string; value: ReactNode; hint?: ReactNode; href?: string; tone?: "danger" | "accent" }) {
+const STAT_ICON = {
+  neutral: "bg-surface-2 text-muted",
+  accent: "bg-accent-soft text-accent-ink",
+  ember: "bg-ember-soft text-ember",
+  danger: "bg-danger-soft text-danger",
+  success: "bg-success-soft text-success",
+  info: "bg-info-soft text-info",
+} as const;
+
+/** Metrik kartı. `featured`: bronz → kor geçişli vurgulu kart (sayfada en fazla bir tane). */
+export function Stat({
+  label,
+  value,
+  hint,
+  href,
+  tone,
+  icon,
+  featured,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: ReactNode;
+  href?: string;
+  tone?: keyof typeof STAT_ICON;
+  icon?: ReactNode;
+  featured?: boolean;
+}) {
   const inner = (
     <>
-      <p className="text-[13px] text-muted">{label}</p>
-      <p className={cn("mt-1 font-display text-[28px] font-semibold tabular leading-tight", tone === "danger" && "text-danger", tone === "accent" && "text-accent-ink")}>{value}</p>
-      {hint ? <p className="mt-0.5 text-xs text-muted">{hint}</p> : null}
+      <div className="flex items-start justify-between gap-2">
+        <p className={cn("text-[13px] font-semibold", featured ? "text-white/90" : "text-fg/85")}>{label}</p>
+        {icon ? <span className={cn("grid size-8 shrink-0 place-items-center rounded-full [&>svg]:size-4", featured ? "bg-white/20 text-white" : STAT_ICON[tone ?? "neutral"])}>{icon}</span> : null}
+      </div>
+      <p
+        className={cn(
+          "mt-3 font-display text-[30px] font-bold tabular leading-none tracking-tight",
+          featured ? "text-white" : tone === "danger" ? "text-danger" : tone === "ember" ? "text-ember" : tone === "accent" ? "text-accent-ink" : "text-fg",
+        )}
+      >
+        {value}
+      </p>
+      {hint ? <p className={cn("mt-1.5 text-xs", featured ? "text-white/80" : "text-muted")}>{hint}</p> : null}
     </>
   );
-  const cls = "block rounded-xl border border-line bg-surface p-4 shadow-card";
+  const cls = cn(
+    "block rounded-[20px] border p-4 shadow-card",
+    featured ? "border-white/25 bg-gradient-to-br from-[#b07a47] to-[#e0702e] shadow-[0_16px_34px_-14px_rgb(224_112_46/0.7)]" : "border-line bg-surface",
+  );
   return href ? (
-    <Link href={href} className={cn(cls, "transition-colors hover:border-line-strong")}>
+    <Link href={href} className={cn(cls, "transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg")}>
       {inner}
     </Link>
   ) : (

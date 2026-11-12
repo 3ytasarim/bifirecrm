@@ -1,10 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans, Manrope } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
 
-const dmsans = DM_Sans({ subsets: ["latin", "latin-ext"], variable: "--font-dmsans", display: "swap" });
-const manrope = Manrope({ subsets: ["latin", "latin-ext"], variable: "--font-manrope", display: "swap" });
+const jakarta = Plus_Jakarta_Sans({ subsets: ["latin", "latin-ext"], variable: "--font-jakarta", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Bifire CRM", template: "%s · Bifire CRM" },
@@ -14,15 +13,15 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f3f0e9" },
-    { media: "(prefers-color-scheme: dark)", color: "#181a17" },
+    { media: "(prefers-color-scheme: light)", color: "#e9e3d9" },
+    { media: "(prefers-color-scheme: dark)", color: "#11110f" },
   ],
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const theme = (await cookies()).get("bcrm_theme")?.value;
   return (
-    <html lang="tr" data-theme={theme === "light" || theme === "dark" ? theme : undefined} className={`${dmsans.variable} ${manrope.variable}`}>
+    <html lang="tr" data-theme={theme === "light" || theme === "dark" ? theme : undefined} className={jakarta.variable}>
       <body className="min-h-dvh">{children}</body>
     </html>
   );

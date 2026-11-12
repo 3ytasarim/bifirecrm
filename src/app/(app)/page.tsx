@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AlarmClock, FileText, Hammer, Sparkles, Trophy, TrendingDown } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireActor } from "@/lib/rbac/guard";
 import { opportunityScope, projectScope, taskScope } from "@/lib/rbac/scope";
@@ -51,11 +52,18 @@ export default async function Dashboard() {
   const activeTotal = activeProjects.reduce((s, p) => s + p._count._all, 0);
   const sourceTotal = bySource.reduce((s, r) => s + r._count._all, 0);
 
+  const hour = Number(new Intl.DateTimeFormat("tr-TR", { hour: "numeric", hour12: false, timeZone: "Europe/Istanbul" }).format(now));
+  const greeting = hour < 6 ? "İyi geceler" : hour < 12 ? "Günaydın" : hour < 18 ? "İyi günler" : "İyi akşamlar";
+
   return (
-    <>
+    <div className="animate-rise">
       <PageHeader
-        title="Genel Bakış"
-        description={`Hoş geldiniz, ${actor.name.split(" ")[0]}. ${isManager ? "Tüm ekip verisi" : "Size bağlı kayıtlar"} gösteriliyor.`}
+        title={
+          <>
+            {greeting}, <span className="bg-gradient-to-r from-accent to-ember bg-clip-text text-transparent">{actor.name.split(" ")[0]}</span>
+          </>
+        }
+        description={`Genel bakış · ${isManager ? "Tüm ekip verisi" : "Size bağlı kayıtlar"} gösteriliyor.`}
         actions={
           actor.perms.has("contacts.create") ? (
             <Link href="/talepler/yeni" className={buttonClass("primary")}>
@@ -66,12 +74,12 @@ export default async function Dashboard() {
       />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Yeni fırsat (7 gün)" value={newOpps} href="/firsatlar?gorunum=tablo&tarih=7" />
-        <Stat label="Geciken görev" value={overdueTasks} tone={overdueTasks ? "danger" : undefined} href="/gorevler?durum=geciken" />
-        <Stat label="Teklif aşamasında" value={awaitingQuote} href="/firsatlar?gorunum=tablo&asama=QUOTATION_PREPARING,QUOTATION_SENT" />
-        <Stat label="Kazanılan (30 gün)" value={won30._count._all} hint={won30._sum.estimatedAmount ? fmtMoney(won30._sum.estimatedAmount) : undefined} tone="accent" />
-        <Stat label="Kaybedilen (30 gün)" value={lost30} />
-        <Stat label="Aktif üretim / montaj" value={activeTotal} href="/projeler?durum=aktif" />
+        <Stat featured label="Yeni fırsat (7 gün)" value={newOpps} icon={<Sparkles />} hint="Son 7 günde açılan" href="/firsatlar?gorunum=tablo&tarih=7" />
+        <Stat label="Geciken görev" value={overdueTasks} tone={overdueTasks ? "danger" : "neutral"} icon={<AlarmClock />} hint={overdueTasks ? "Hemen ilgilenin" : "Gecikme yok"} href="/gorevler?durum=geciken" />
+        <Stat label="Teklif aşamasında" value={awaitingQuote} tone="ember" icon={<FileText />} hint="Hazırlanan + gönderilen" href="/firsatlar?gorunum=tablo&asama=QUOTATION_PREPARING,QUOTATION_SENT" />
+        <Stat label="Kazanılan (30 gün)" value={won30._count._all} hint={won30._sum.estimatedAmount ? fmtMoney(won30._sum.estimatedAmount) : "Tutar yok"} tone="success" icon={<Trophy />} />
+        <Stat label="Kaybedilen (30 gün)" value={lost30} tone="neutral" icon={<TrendingDown />} hint="Son 30 gün" />
+        <Stat label="Aktif üretim / montaj" value={activeTotal} tone="accent" icon={<Hammer />} hint="Devam eden projeler" href="/projeler?durum=aktif" />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-3">
@@ -139,8 +147,8 @@ export default async function Dashboard() {
                           {r._count._all} · %{pct}
                         </span>
                       </div>
-                      <div className="h-1.5 rounded-full bg-surface-2" aria-hidden>
-                        <div className="h-1.5 rounded-full bg-accent" style={{ width: `${pct}%` }} />
+                      <div className="h-2 rounded-full bg-surface-2" aria-hidden>
+                        <div className="h-2 rounded-full bg-gradient-to-r from-accent to-ember" style={{ width: `${pct}%` }} />
                       </div>
                     </li>
                   );
@@ -193,6 +201,6 @@ export default async function Dashboard() {
         ) : null}
       </div>
       <p className="mt-6 text-xs text-muted">Son güncelleme: {fmtDateTime(now)} (Europe/Istanbul)</p>
-    </>
+    </div>
   );
 }
