@@ -25,7 +25,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 /** Küçük harf + boşluk temizliği. Gmail nokta/artı kuralları gibi sağlayıcıya özel dönüşüm YAPILMAZ (yanlış eşleşme riski). */
 export function normalizeEmail(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const e = raw.trim().toLocaleLowerCase("en-US");
+  // Türkçe klavye "i" yerine "ı"/"İ" yazabilir; e-posta adreslerinde bu harfler geçmez, "i" sayılır.
+  const e = raw.trim().replace(/[İı]/g, "i").toLocaleLowerCase("en-US");
   return EMAIL_RE.test(e) ? e : null;
 }
 

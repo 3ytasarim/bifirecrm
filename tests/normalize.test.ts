@@ -19,6 +19,10 @@ describe("normalizePhone", () => {
 
 describe("normalizeEmail", () => {
   it("küçük harf + trim", () => expect(normalizeEmail("  Ayse@Ornek.COM ")).toBe("ayse@ornek.com"));
+  it("Türkçe klavyenin ı/İ harfini i sayar", () => {
+    expect(normalizeEmail("İnfo@bifiresomine.com")).toBe("info@bifiresomine.com");
+    expect(normalizeEmail("admın@bifiresomine.com")).toBe("admin@bifiresomine.com");
+  });
   it("Gmail nokta kuralı uygulanmaz", () => expect(normalizeEmail("a.b@gmail.com")).toBe("a.b@gmail.com"));
   it("geçersiz e-posta null", () => {
     expect(normalizeEmail("ayse@")).toBeNull();

@@ -20,9 +20,16 @@ const LOCK_MINUTES = 15;
 const GENERIC = "E-posta veya şifre hatalı.";
 
 export async function login(_: ActionState, fd: FormData): Promise<ActionState> {
-  const email = normalizeEmail(String(fd.get("email") ?? ""));
+  const rawEmail = String(fd.get("email") ?? "").trim();
+  const email = normalizeEmail(rawEmail);
   const password = String(fd.get("password") ?? "");
-  if (!email || !password) return { ok: false, message: "E-posta ve şifrenizi yazın." };
+  if (!email || !password) {
+    const errors: Record<string, string> = {};
+    if (!rawEmail) errors.email = "E-posta adresinizi yazın.";
+    else if (!email) errors.email = "Geçerli bir e-posta adresi yazın.";
+    if (!password) errors.password = "Şifrenizi yazın.";
+    return { ok: false, message: "Giriş bilgilerini kontrol edin.", errors };
+  }
 
   const meta = await requestMeta();
   const [byIp, byEmail] = await Promise.all([rateLimit(`login:ip:${meta.ipHash ?? "?"}`, 20, 900), rateLimit(`login:email:${email}`, 10, 900)]);
