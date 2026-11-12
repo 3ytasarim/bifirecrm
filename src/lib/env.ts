@@ -23,6 +23,10 @@ const schema = z.object({
   SMTP_FROM: z.string().optional(),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().max(100).default(20),
   WEBSITE_HMAC_SECRET: z.string().optional(),
+  // CRM → site çekme: sitenin adresi (ör. https://www.bifiresomine.com). Boşsa çekme kapalı.
+  WEBSITE_PULL_URL: z.string().url().optional(),
+  // İlk çekmede kaç gün geriye gidilsin (sonrası kaldığı yerden devam eder).
+  WEBSITE_PULL_INITIAL_DAYS: z.coerce.number().int().min(0).max(365).default(7),
   // Faz 4 — Meta (Lead Ads, Instagram, WhatsApp). Boşsa kanal "Yapılandırılmadı" kalır.
   META_APP_SECRET: z.string().optional(),
   META_VERIFY_TOKEN: z.string().optional(),

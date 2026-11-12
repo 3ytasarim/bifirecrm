@@ -10,6 +10,7 @@ import { retryJobNow } from "@/lib/jobs/queue";
 import { missingEnv, REQUIRED_ENV } from "@/lib/integrations/channels-config";
 import { requestTemplateSync } from "@/lib/services/channels";
 import { disconnectGoogleCalendar } from "@/lib/services/calendar-sync";
+import { pullWebsiteRequests, websitePullConfig } from "@/lib/integrations/website-pull";
 import { CONNECTION_STATUS_LABELS, JOB_STATUS_LABELS, PROVIDER_LABELS, WA_TEMPLATE_CATEGORY_LABELS } from "@/lib/labels";
 import { fmtDateTime, fmtRelative } from "@/lib/format";
 import { Badge, Card, EmptyState, PageHeader, Stat, tableCls } from "@/components/ui/primitives";
@@ -19,7 +20,7 @@ export const metadata = { title: "Entegrasyonlar" };
 
 /** Her sağlayıcı için gerçekte ne gerektiği; bağlantı yoksa "bağlı" gösterilmez. */
 const REQUIREMENTS: Record<IntegrationProvider, { phase: string; needs: string }> = {
-  BIFIRE_WEBSITE: { phase: "Faz 2", needs: "Sitede CRM_FORWARD_ENABLED=true + aynı HMAC sırrı (CRM: WEBSITE_HMAC_SECRET, site: CRM_WEBSITE_HMAC_SECRET). İlk imzalı başvuru gelince “Aktif” olur." },
+  BIFIRE_WEBSITE: { phase: "Faz 2", needs: "İki yol, aynı HMAC sırrı (CRM: WEBSITE_HMAC_SECRET, site: CRM_WEBSITE_HMAC_SECRET). Çekme: CRM’de WEBSITE_PULL_URL + sitede CRM_PULL_ENABLED=true; worker 2 dakikada bir yeni formları alır. Gönderme: sitede CRM_FORWARD_ENABLED=true (CRM canlıdayken)." },
   META_LEAD_ADS: { phase: "Faz 4", needs: "Meta Business Manager, Facebook sayfası, Meta uygulaması (leads_retrieval + pages_manage_metadata, App Review), sayfaya leadgen webhook aboneliği, sistem kullanıcısı erişim anahtarı." },
   INSTAGRAM_DM: { phase: "Faz 4", needs: "Instagram profesyonel hesabı (sayfaya bağlı), instagram_manage_messages izni + App Review, messages webhook aboneliği. CRM gelen mesajı gösterir; yanıt Instagram uygulamasından verilir." },
   WHATSAPP: { phase: "Faz 4", needs: "WhatsApp Business hesabı (WABA), CRM için AYRI doğrulanmış numara, sistem kullanıcısı anahtarı (whatsapp_business_messaging), Meta'da onaylı şablonlar, messages webhook aboneliği." },
@@ -71,7 +72,18 @@ async function disconnectGoogle() {
   redirect("/entegrasyonlar?google=kaldirildi");
 }
 
-type SP = { google?: string; neden?: string; wa?: string };
+async function pullWebsite() {
+  "use server";
+  const actor = await getActorOrNull();
+  if (!actor) return;
+  assertCan(actor, "integrations.manage");
+  const r = await pullWebsiteRequests({ maxPages: 20 });
+  await audit({ actorId: actor.id, action: "integration_pull", entityType: "integration", entityId: "BIFIRE_WEBSITE", summary: r.enabled ? `yeni=${r.imported} tekrar=${r.duplicates}${r.error ? " hata" : ""}` : "kapalı" });
+  const q = !r.enabled ? "kapali" : r.error ? "hata" : `tamam-${r.imported}`;
+  redirect(`/entegrasyonlar?site=${q}`);
+}
+
+type SP = { google?: string; neden?: string; wa?: string; site?: string };
 
 export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const actor = await requirePermission("integrations.view");
@@ -91,6 +103,9 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   const googleMsg = sp.google === "baglandi" || sp.google === "kaldirildi" ? GOOGLE_MESSAGES[sp.google] : sp.google === "hata" ? (GOOGLE_MESSAGES[sp.neden ?? ""] ?? GOOGLE_MESSAGES.google) : null;
   const waMsg = sp.wa === "sira" ? "Şablon senkronu kuyruğa alındı; worker birkaç saniye içinde Meta'dan çeker." : sp.wa === "yapilandirilmadi" ? "WhatsApp anahtarları .env'de tanımlı değil." : sp.wa === "hata" ? "Şablon senkronu başlatılamadı." : null;
 
+  const pullCfg = websitePullConfig();
+  const siteMsg = sp.site?.startsWith("tamam-") ? `Site formları çekildi: ${Number(sp.site.slice(6)) || 0} yeni başvuru. Müşteri/fırsat kaydı worker tarafından birkaç saniyede açılır.` : sp.site === "kapali" ? "Çekme kapalı: WEBSITE_PULL_URL ve WEBSITE_HMAC_SECRET tanımlı değil." : sp.site === "hata" ? "Siteden çekilemedi; ayrıntı aşağıdaki son hatada." : null;
+
   const extra = (p: IntegrationProvider) => {
     const cfg = (connections.find((x) => x.provider === p)?.config ?? {}) as Record<string, string | null>;
     if (p === "META_LEAD_ADS" || p === "INSTAGRAM_DM" || p === "WHATSAPP") {
@@ -105,6 +120,22 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
             </span>
           ) : null}
         </p>
+      );
+    }
+    if (p === "BIFIRE_WEBSITE") {
+      const cursor = (cfg as { pullCursor?: { after?: string } }).pullCursor;
+      return (
+        <div className="mt-1 text-xs text-muted">
+          <p>
+            Çekme: {pullCfg ? <>açık · <code className="rounded bg-surface-2 px-1 font-mono">{pullCfg.baseUrl}</code></> : "kapalı (WEBSITE_PULL_URL tanımlı değil)"}
+            {cursor?.after ? ` · son başvuru: ${fmtDateTime(new Date(cursor.after))}` : ""}
+          </p>
+          {canManage && pullCfg ? (
+            <form action={pullWebsite} className="mt-2">
+              <button className={buttonClass("secondary", "sm")}>Şimdi çek</button>
+            </form>
+          ) : null}
+        </div>
       );
     }
     if (p === "GOOGLE_CALENDAR") {
@@ -138,6 +169,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
     <>
       <PageHeader title="Entegrasyonlar / Aktarım günlüğü" description="Dış kaynaklardan veri alımı, yeniden deneme ve kalıcı hata kuyruğu. Hesabı bağlanmamış kanal “aktif” gösterilmez; durum yalnız gerçek API yanıtı ya da imzası doğrulanmış olaydan gelir." />
       {googleMsg ? <p className={`mb-4 rounded-lg border px-4 py-3 text-sm ${sp.google === "hata" ? "border-danger/40 text-danger" : "border-line"}`} role="status">{googleMsg}</p> : null}
+      {siteMsg ? <p className={`mb-4 rounded-lg border px-4 py-3 text-sm ${sp.site?.startsWith("tamam") ? "border-line" : "border-danger/40 text-danger"}`} role="status">{siteMsg}</p> : null}
       {waMsg ? <p className={`mb-4 rounded-lg border px-4 py-3 text-sm ${sp.wa === "sira" ? "border-line" : "border-danger/40 text-danger"}`} role="status">{waMsg}</p> : null}
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Bekleyen / yeniden denenecek" value={count("PENDING") + count("RETRY")} />

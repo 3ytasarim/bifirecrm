@@ -19,6 +19,7 @@
 | Meta/Google token'ları | Meta token'ları yalnız `.env`'de; Graph'a `Authorization: Bearer` başlığıyla (URL'de değil). Google refresh token AES-256-GCM şifreli DB'de, access token yalnız bellekte. OAuth: PKCE S256 + state, durum şifreli HttpOnly çerezde (10 dk, dar path), yalnız `calendar.events` kapsamı, bağlantı yalnız `integrations.manage`. Sahte sunucu adresleri (`META_GRAPH_URL`, `GOOGLE_*_URL`) production'da yok sayılır. |
 | WhatsApp gönderimi | Yalnız onaylı şablon; pazarlama için kayıtlı açık rıza; kanal Hata iken gönderim yok; kullanıcı başına hız sınırı; her gönderim denetlenir. Kalıcı 4xx hataları yeniden denenmez (spam yok). Mesaj içeriği loglanmaz. |
 | Site → CRM (Faz 2) | HMAC-SHA256 imza + ±5 dk zaman penceresi + nonce tekrar reddi + `(source, sourceSubmissionId)` idempotency. |
+| CRM → site çekme | Aynı HMAC sırrıyla imzalı GET (`GET <yol+sorgu>` imzalanır, ±5 dk). Site ucu varsayılan kapalı (404), yalnız okur; imleç CRM DB'de. Yük ve idempotency gönderme yoluyla aynı (`acceptWebsitePayload`). |
 | Denetim | Giriş, yetki, kayıt değişiklikleri (alan farkı, hassas alanlar maskeli), birleştirme, dışa aktarma, dosya indirme. |
 | Ortam ayrımı | Demo verisi ve QA temizliği `APP_ENV=production`'da reddeder. Production'da `APP_URL` https zorunlu. |
 

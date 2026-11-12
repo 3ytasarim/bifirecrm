@@ -45,6 +45,17 @@ Migration'lar yalnız **ekleyici** (kolon/tablo ekleme) tutulur; silme/yeniden a
 7. 48 saat izle: CRM › Entegrasyonlar (dead-letter = 0), `logs/crm-forward.log` (hata=0).
 8. Geri alma: site `.env` `CRM_FORWARD_ENABLED=false` + `pm2 restart <site> --update-env`. Site DB'sine hiçbir şey eklenmediği için başka adım yok.
 
+## Site formlarını CRM'e çekme (CRM canlıda değilken de çalışır; onayla)
+Site CRM'e gönderemiyorsa (CRM yerelde / kapalı) CRM, form taleplerini siteden kendisi çeker. Gönderme yoluyla birlikte de kullanılabilir; çift kayıt açılmaz (submissionId).
+1. Sır üret: `openssl rand -base64 48` → CRM `.env` `WEBSITE_HMAC_SECRET`, site `.env` `CRM_WEBSITE_HMAC_SECRET` (aynı değer).
+2. Site deploy (çekme ucu kodu; `CRM_PULL_ENABLED` hâlâ `false` → uç 404, site davranışı değişmez).
+3. Site `.env`: `CRM_PULL_ENABLED=true` → `pm2 restart <site> --update-env`.
+4. CRM `.env`: `WEBSITE_PULL_URL=https://www.bifiresomine.com` (isteğe bağlı `WEBSITE_PULL_INITIAL_DAYS`, varsayılan 7). Web süreci ve worker yeniden başlatılır.
+5. CRM › Entegrasyonlar › Bifire web sitesi formları › “Şimdi çek”: son 7 günün talepleri gelir; sonra worker 2 dakikada bir yeni talepleri alır.
+6. Geri alma: site `.env` `CRM_PULL_ENABLED=false` (uç yeniden 404) ya da CRM'de `WEBSITE_PULL_URL` boşaltılır. Site DB'sine hiçbir şey yazılmaz.
+
+Not: CRM geliştirme veritabanıyla çalışırken çekilen talepler gerçek müşteri verisidir; CRM canlıya geçince canlı CRM'de yeniden çekilmelidir (imleç her DB'de ayrı tutulur).
+
 ## Faz 4: kanalları bağlama (onayla, CRM canlıda ve https ile erişilebilirken)
 Gizli değerler yalnız sunucu `.env`'ine yazılır; her adımdan sonra `pm2 restart bifire-crm bifire-crm-worker --update-env`.
 1. **Meta uygulaması** (developers.facebook.com, Business türü, Bifire Business hesabına bağlı): App secret → `META_APP_SECRET`; rastgele bir `META_VERIFY_TOKEN` üret.

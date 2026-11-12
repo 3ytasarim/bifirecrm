@@ -287,6 +287,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   lead_converted: "Talep dönüştürüldü",
   lead_discarded: "Talep reddedildi",
   integration_retry: "Entegrasyon yeniden denendi",
+  integration_pull: "Site formları elle çekildi",
   settings_updated: "Ayar değişti",
   setting_changed: "Ayar değişti",
   lead_received: "Talep alındı (bekliyor)",
