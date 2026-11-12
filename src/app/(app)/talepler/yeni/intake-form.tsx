@@ -15,16 +15,16 @@ export function IntakeForm({ sources, fireplaceTypes, users, defaultOwner, canAs
     <ActionForm action={quickIntakeAction} className="grid gap-6 lg:grid-cols-3">
       {prefill ? <input type="hidden" name="leadId" value={prefill.leadId} /> : null}
       <div className="space-y-6 lg:col-span-2">
-        <fieldset className="grid gap-4 rounded-xl border border-line bg-surface p-5 shadow-card sm:grid-cols-2">
-          <legend className="px-1 font-display text-[15px] font-semibold">Kişi</legend>
+        <fieldset className="grid gap-4 form-section rounded-[22px] border border-line bg-surface p-6 shadow-card sm:grid-cols-2">
+          <legend>Kişi</legend>
           <Field name="name" label="Ad soyad" required autoComplete="off" className="sm:col-span-2" defaultValue={prefill?.name} />
           <Field name="phone" label="Telefon" type="tel" inputMode="tel" placeholder="0532 123 45 67" hint="Telefon veya e-posta zorunlu." defaultValue={prefill?.phone ?? undefined} />
           <Field name="email" label="E-posta" type="email" defaultValue={prefill?.email ?? undefined} />
           <Field name="city" label="İl" placeholder="İstanbul" />
           <Field name="district" label="İlçe" placeholder="Tuzla" defaultValue={prefill?.district ?? undefined} />
         </fieldset>
-        <fieldset className="grid gap-4 rounded-xl border border-line bg-surface p-5 shadow-card sm:grid-cols-2">
-          <legend className="px-1 font-display text-[15px] font-semibold">Talep</legend>
+        <fieldset className="grid gap-4 form-section rounded-[22px] border border-line bg-surface p-6 shadow-card sm:grid-cols-2">
+          <legend>Talep</legend>
           <SelectField name="source" label="Kaynak" options={sources} defaultValue={prefill?.source ?? "PHONE"} required />
           <SelectField name="fireplaceType" label="Şömine türü" options={fireplaceTypes} placeholder="Belirtilmedi" />
           <Field name="productCategory" label="Ürün kategorisi" placeholder="ör. L tipi odunlu" defaultValue={prefill?.productCategory ?? undefined} />
@@ -33,8 +33,8 @@ export function IntakeForm({ sources, fireplaceTypes, users, defaultOwner, canAs
         </fieldset>
       </div>
       <div className="space-y-6">
-        <fieldset className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-card">
-          <legend className="px-1 font-display text-[15px] font-semibold">Atama ve izinler</legend>
+        <fieldset className="space-y-4 form-section rounded-[22px] border border-line bg-surface p-6 shadow-card">
+          <legend>Atama ve izinler</legend>
           {canAssign ? <SelectField name="ownerId" label="Sorumlu" options={users} defaultValue={defaultOwner} /> : <input type="hidden" name="ownerId" value={defaultOwner} />}
           <CheckboxField name="kvkkNotice" label="KVKK aydınlatma metni müşteriye iletildi" hint="Kanıt olarak kaydedilir." defaultChecked={prefill?.kvkkNotice} />
           <CheckboxField name="marketingConsent" label="Müşteri pazarlama iletişimine açık izin verdi" hint="Aydınlatmadan ayrı, ayrı kanıtla tutulur." />

@@ -45,8 +45,8 @@ export function ContactForm({
     <ActionForm action={action} className="grid gap-6 lg:grid-cols-3">
       {d.id ? <input type="hidden" name="id" value={d.id} /> : null}
       <div className="space-y-6 lg:col-span-2">
-        <fieldset className="grid gap-4 rounded-xl border border-line bg-surface p-5 shadow-card sm:grid-cols-2">
-          <legend className="px-1 font-display text-[15px] font-semibold">Kimlik ve iletişim</legend>
+        <fieldset className="grid gap-4 form-section rounded-[22px] border border-line bg-surface p-6 shadow-card sm:grid-cols-2">
+          <legend>Kimlik ve iletişim</legend>
           <Field name="firstName" label="Ad" required defaultValue={d.firstName} />
           <Field name="lastName" label="Soyad" defaultValue={d.lastName ?? ""} />
           <Field name="phone" label="Telefon" type="tel" defaultValue={d.phone ?? ""} hint="Eşleştirme için E.164 biçimine çevrilir." />
@@ -56,21 +56,21 @@ export function ContactForm({
           <SelectField name="preferredChannel" label="Tercih ettiği kanal" options={channels} defaultValue={d.preferredChannel ?? "ANY"} />
           <SelectField name="source" label="İlk kaynak" options={sources} defaultValue={d.source ?? "MANUAL"} />
         </fieldset>
-        <fieldset className="grid gap-4 rounded-xl border border-line bg-surface p-5 shadow-card sm:grid-cols-2">
-          <legend className="px-1 font-display text-[15px] font-semibold">Adres</legend>
+        <fieldset className="grid gap-4 form-section rounded-[22px] border border-line bg-surface p-6 shadow-card sm:grid-cols-2">
+          <legend>Adres</legend>
           <Field name="city" label="İl" defaultValue={d.city ?? ""} />
           <Field name="district" label="İlçe" defaultValue={d.district ?? ""} />
           <TextareaField name="address" label="Açık adres" rows={2} defaultValue={d.address} className="sm:col-span-2" />
         </fieldset>
-        <fieldset className="grid gap-4 rounded-xl border border-line bg-surface p-5 shadow-card">
-          <legend className="px-1 font-display text-[15px] font-semibold">Notlar</legend>
+        <fieldset className="grid gap-4 form-section rounded-[22px] border border-line bg-surface p-6 shadow-card">
+          <legend>Notlar</legend>
           <Field name="tags" label="Etiketler" defaultValue={d.tags?.join(", ") ?? ""} hint="Virgülle ayırın: mimar, vip, otel" />
           <TextareaField name="notes" label="Genel not" rows={3} defaultValue={d.notes} />
         </fieldset>
       </div>
       <div className="space-y-6">
-        <fieldset className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-card">
-          <legend className="px-1 font-display text-[15px] font-semibold">Sorumlu ve KVKK</legend>
+        <fieldset className="space-y-4 form-section rounded-[22px] border border-line bg-surface p-6 shadow-card">
+          <legend>Sorumlu ve KVKK</legend>
           {canAssign ? <SelectField name="ownerId" label="Müşteri sorumlusu" options={users} defaultValue={d.ownerId ?? ""} placeholder="Atanmamış" /> : null}
           <CheckboxField name="kvkkNotice" label="KVKK aydınlatma metni iletildi" defaultChecked={d.kvkkNotice} hint="İlk işaretlemede zaman damgası ve kanıt kaydı oluşur." />
           <CheckboxField name="marketingConsent" label="Pazarlama iletişimine açık izin" defaultChecked={d.marketingConsent} hint="Ayrı izin; geri alınırsa kayıt düşülür." />
