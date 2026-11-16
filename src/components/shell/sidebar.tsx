@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { BarChart3, CalendarDays, Flame, CheckSquare, FileText, Hammer, Inbox, KanbanSquare, LayoutDashboard, Menu, MessageCircle, MessageSquareText, PlugZap, Settings, ShieldCheck, Users, X } from "lucide-react";
+import { BarChart3, CalendarDays, CheckSquare, FileText, Hammer, Inbox, KanbanSquare, LayoutDashboard, Menu, MessageCircle, MessageSquareText, PlugZap, Settings, ShieldCheck, Users, X } from "lucide-react";
 import { cn } from "@/components/ui/cn";
 import type { NavItem } from "./nav";
+import { BrandLogo } from "./brand-logo";
 
 const ICONS = { LayoutDashboard, Inbox, Users, KanbanSquare, FileText, CalendarDays, Hammer, CheckSquare, BarChart3, MessageCircle, MessageSquareText, PlugZap, ShieldCheck, Settings } as const;
 
@@ -75,14 +76,9 @@ export function Sidebar({ items, badges }: { items: NavItem[]; badges: Record<st
 
 function Brand() {
   return (
-    <Link href="/" className="flex h-20 items-center gap-3 px-5">
-      <span className="grid size-10 place-items-center rounded-2xl bg-gradient-to-br from-[#c08a55] to-[#e0702e] shadow-[0_8px_20px_-6px_rgb(224_112_46/0.7)]" aria-hidden>
-        <Flame className="size-5 text-white" />
-      </span>
-      <span className="leading-tight">
-        <span className="block font-display text-[17px] font-bold tracking-[0.18em] text-white">BİFİRE</span>
-        <span className="block text-[10px] font-medium uppercase tracking-[0.24em] text-white/55">CRM</span>
-      </span>
+    <Link href="/" className="flex h-20 items-center gap-3 px-5" aria-label="Bifire CRM ana sayfa">
+      <BrandLogo className="w-[128px]" />
+      <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/70">CRM</span>
     </Link>
   );
 }

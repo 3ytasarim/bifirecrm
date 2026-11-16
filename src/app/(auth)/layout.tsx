@@ -1,4 +1,5 @@
-import { ArrowUpRight, CalendarDays, Flame, MessageCircle, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, CalendarDays, MessageCircle, ShieldCheck } from "lucide-react";
+import { BrandLogo } from "@/components/shell/brand-logo";
 
 /**
  * Giriş / şifre ekranları: tam ekran Bifire şömine fotoğrafı, solda karşılama, sağda buzlu cam form kartı.
@@ -19,13 +20,12 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div aria-hidden className="pointer-events-none fixed bottom-8 right-6 -z-[1] size-40 rounded-full border-[3px] border-[#e0702e]/25 max-lg:hidden" />
 
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 pt-6 sm:px-8 sm:pt-8">
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 place-items-center rounded-2xl bg-gradient-to-br from-[#c08a55] to-[#e0702e] shadow-[0_8px_20px_-6px_rgb(224_112_46/0.7)]" aria-hidden>
-            <Flame className="size-5 text-white" />
-          </span>
-          <span className="leading-tight text-white">
-            <span className="block font-display text-[17px] font-bold tracking-[0.18em]">BİFİRE</span>
-            <span className="block text-[10px] font-medium uppercase tracking-[0.24em] text-white/60 max-sm:hidden">Müşteri & Proje Yönetimi</span>
+        <div className="flex items-center gap-4">
+          <BrandLogo priority className="w-[132px] sm:w-[156px]" />
+          <span className="border-l border-white/20 pl-4 text-[10px] font-medium uppercase leading-snug tracking-[0.24em] text-white/60 max-sm:hidden">
+            Müşteri &amp; Proje
+            <br />
+            Yönetimi
           </span>
         </div>
         <a
