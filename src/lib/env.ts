@@ -36,6 +36,12 @@ const schema = z.object({
   WHATSAPP_ACCESS_TOKEN: z.string().optional(),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
   WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().optional(),
+  // WhatsApp sağlayıcısı: "meta" (doğrudan Cloud API) ya da "360dialog" (Meta iş ortağı; numara telefondaki
+  // WhatsApp Business uygulamasında da kalır = coexistence). 360dialog'da yalnız API anahtarı + webhook sırrı gerekir.
+  WHATSAPP_PROVIDER: z.enum(["meta", "360dialog"]).default("meta"),
+  D360_API_KEY: z.string().optional(),
+  // 360dialog webhook isteklerinde X-Bifire-Webhook-Token başlığı olarak gelir (scripts/d360-webhook.ts kaydeder).
+  D360_WEBHOOK_SECRET: z.string().optional(),
   // Faz 4 — Google Takvim (OAuth istemcisi; yenileme anahtarı DB'de şifreli).
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
@@ -43,6 +49,7 @@ const schema = z.object({
   META_GRAPH_URL: z.string().url().optional(),
   GOOGLE_OAUTH_URL: z.string().url().optional(),
   GOOGLE_API_URL: z.string().url().optional(),
+  D360_API_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

@@ -1,15 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { safeEqual } from "@/lib/crypto";
 import { rateLimit } from "@/lib/rate-limit";
-import { enqueue } from "@/lib/jobs/queue";
 import { apiError, clientIpHash } from "@/lib/integrations/website-request";
 import { metaWebhookSecrets } from "@/lib/integrations/channels-config";
 import { verifyMetaSignature } from "@/lib/integrations/meta-signature";
 import { parseMetaWebhook } from "@/lib/integrations/meta-webhook";
-import { markEventReceived } from "@/lib/integrations/health";
+import { storeChannelEvents } from "@/lib/integrations/store-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,30 +60,11 @@ export async function POST(req: NextRequest) {
     return apiError(400, "invalid_json", "Gövde geçerli JSON değil.");
   }
 
-  const events = parseMetaWebhook(body, { whatsappPhoneNumberId: env().WHATSAPP_PHONE_NUMBER_ID ?? null });
-  let accepted = 0;
-  let duplicates = 0;
-  const providers = new Set<(typeof events)[number]["provider"]>();
-  for (const e of events) {
-    try {
-      await prisma.$transaction(async (t) => {
-        const ev = await t.integrationEvent.create({
-          data: { provider: e.provider, externalEventId: e.externalEventId, eventType: e.eventType, status: "PENDING", payload: e.payload as Prisma.InputJsonValue },
-        });
-        await enqueue(e.jobType, { eventId: ev.id }, { eventId: ev.id }, t);
-      });
-      accepted++;
-      providers.add(e.provider);
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-        duplicates++;
-        continue;
-      }
-      // Meta 200 dışı yanıtta bildirimi yeniden gönderir; kaydedilemeyen olay kaybolmaz.
-      console.error("[webhooks/meta] kayıt hatası:", err instanceof Error ? err.message : "bilinmeyen");
-      return apiError(500, "internal_error", "Olay kaydedilemedi.");
-    }
-  }
-  for (const p of providers) await markEventReceived(p).catch(() => {});
-  return NextResponse.json({ ok: true, accepted, duplicates }, { headers: { "Cache-Control": "no-store" } });
+  let events = parseMetaWebhook(body, { whatsappPhoneNumberId: env().WHATSAPP_PHONE_NUMBER_ID ?? null });
+  // WhatsApp 360dialog üzerinden bağlıysa WhatsApp olayları yalnız 360dialog ucundan kabul edilir (çift kaynak olmasın).
+  if (env().WHATSAPP_PROVIDER === "360dialog") events = events.filter((e) => e.provider !== "WHATSAPP");
+  const r = await storeChannelEvents(events, "webhooks/meta");
+  // Meta 200 dışı yanıtta bildirimi yeniden gönderir; kaydedilemeyen olay kaybolmaz.
+  if (!r.ok) return apiError(500, "internal_error", "Olay kaydedilemedi.");
+  return NextResponse.json({ ok: true, accepted: r.accepted, duplicates: r.duplicates }, { headers: { "Cache-Control": "no-store" } });
 }

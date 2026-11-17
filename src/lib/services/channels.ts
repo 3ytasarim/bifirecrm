@@ -13,8 +13,9 @@ import { enqueue } from "@/lib/jobs/queue";
 import { GraphError, graphRequest } from "@/lib/integrations/graph";
 import { handleProviderError, markConnectionOk, TokenError } from "@/lib/integrations/health";
 import { whatsappConfig } from "@/lib/integrations/channels-config";
+import { waHealth, waListTemplates, waSendMessage } from "@/lib/integrations/whatsapp-client";
 import { type GraphTemplate, type LeadField, mapLeadFields, renderTemplateBody, templateShape, validateTemplateParams } from "@/lib/integrations/channel-rules";
-import type { InstagramMessagePayload, LeadgenPayload, WhatsappMessagePayload, WhatsappStatusPayload } from "@/lib/integrations/meta-webhook";
+import type { InstagramMessagePayload, LeadgenPayload, WhatsappHistoryPayload, WhatsappMessagePayload, WhatsappStatusPayload } from "@/lib/integrations/meta-webhook";
 import { findDuplicateCandidates } from "./contacts";
 import { inboundOwnerId, ingestInboundLead, managerIds } from "./lead-ingest";
 
@@ -84,6 +85,8 @@ type Inbound = {
   text: string | null;
   occurredAt: Date;
   outbound: boolean;
+  /** Geçmiş aktarımı: okunmamış sayılmaz, bildirim ve talep açılmaz. */
+  quiet?: boolean;
 };
 
 /** Yazışmayı müşteriye bağlar: tek eşleşme varsa doğrudan, bekleyen talep dönüştürülmüşse onun müşterisine. */
@@ -131,13 +134,14 @@ async function recordInbound(m: Inbound) {
       data: {
         ...(newer ? { lastMessageAt: m.occurredAt } : {}),
         ...(!m.outbound && (!conv.lastInboundAt || conv.lastInboundAt < m.occurredAt) ? { lastInboundAt: m.occurredAt } : {}),
-        ...(!m.outbound ? { unreadCount: { increment: 1 } } : {}),
+        ...(!m.outbound && !m.quiet ? { unreadCount: { increment: 1 } } : {}),
         ...(!conv.displayName && m.displayName ? { displayName: m.displayName } : {}),
       },
     });
     if (m.outbound) return { conversationId: conv.id, duplicate: false };
 
     let contactId = await resolveContact(t, conv);
+    if (m.quiet) return { conversationId: conv.id, duplicate: false };
     // Tanınmayan kişi: bir kez "Yeni" talep açılır; ekip Talepler ekranından müşteriye dönüştürür (sessiz kart açılmaz).
     if (!contactId && !conv.leadId) {
       const label = CHANNEL_LABEL[m.channel];
@@ -173,9 +177,22 @@ async function recordInbound(m: Inbound) {
 export async function processWhatsappMessage(eventId: string) {
   const ev = await loadEvent(eventId);
   const p = ev.payload as unknown as WhatsappMessagePayload;
-  const r = await recordInbound({ channel: "WHATSAPP", threadId: p.waId, displayName: p.name, phone: normalizePhone(`+${p.waId}`), externalMessageId: p.id, kind: p.kind, text: p.text, occurredAt: new Date(p.timestamp), outbound: false });
+  const r = await recordInbound({ channel: "WHATSAPP", threadId: p.waId, displayName: p.name, phone: normalizePhone(`+${p.waId}`), externalMessageId: p.id, kind: p.kind, text: p.text, occurredAt: new Date(p.timestamp), outbound: p.outbound === true, quiet: p.historical === true });
   await eventDone(ev.id);
   return r;
+}
+
+/** Coexistence geçmiş aktarımı: her mesaj sessizce yazışmaya eklenir (mesaj kimliğiyle tekil; yeniden denemede çift olmaz). */
+export async function processWhatsappHistory(eventId: string) {
+  const ev = await loadEvent(eventId);
+  const p = ev.payload as unknown as WhatsappHistoryPayload;
+  let added = 0;
+  for (const m of p.messages ?? []) {
+    const r = await recordInbound({ channel: "WHATSAPP", threadId: m.waId, displayName: m.name, phone: normalizePhone(`+${m.waId}`), externalMessageId: m.id, kind: m.kind, text: m.text, occurredAt: new Date(m.timestamp), outbound: m.outbound === true, quiet: true });
+    if (!r.duplicate) added++;
+  }
+  await eventDone(ev.id);
+  return { messages: p.messages?.length ?? 0, added };
 }
 
 export async function processInstagramMessage(eventId: string) {
@@ -230,18 +247,9 @@ export async function processWhatsappStatus(eventId: string, attempt: number) {
 export async function syncWhatsappTemplates() {
   const cfg = whatsappConfig();
   if (!cfg) throw new TokenError("WhatsApp yapılandırılmadı (WHATSAPP_* anahtarları eksik).", "WHATSAPP");
-  const all: GraphTemplate[] = [];
+  let all: GraphTemplate[];
   try {
-    let after: string | undefined;
-    for (let page = 0; page < 20; page++) {
-      const r = await graphRequest<{ data: GraphTemplate[]; paging?: { cursors?: { after?: string }; next?: string } }>(`${cfg.wabaId}/message_templates`, {
-        token: cfg.token,
-        query: { fields: "id,name,language,status,category,components", limit: "100", ...(after ? { after } : {}) },
-      });
-      all.push(...(r.data ?? []));
-      after = r.paging?.next ? r.paging.cursors?.after : undefined;
-      if (!after) break;
-    }
+    all = (await waListTemplates(cfg)) as GraphTemplate[];
   } catch (e) {
     return handleProviderError("WHATSAPP", e);
   }
@@ -356,18 +364,12 @@ export async function deliverWhatsappMessage(messageId: string) {
   if (!cfg) throw new TokenError("WhatsApp yapılandırılmadı.", "WHATSAPP");
   const params = (Array.isArray(msg.templateParams) ? msg.templateParams : []).map(String);
   await prisma.message.update({ where: { id: msg.id }, data: { status: "SENDING" } });
-  let res: { messages?: { id: string }[] };
+  let wamid: string | null;
   try {
-    res = await graphRequest(`${cfg.phoneNumberId}/messages`, {
-      token: cfg.token,
-      method: "POST",
-      body: {
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to: msg.conversation.externalThreadId,
-        type: "template",
-        template: { name: tpl.name, language: { code: tpl.language }, components: params.length ? [{ type: "body", parameters: params.map((text) => ({ type: "text", text })) }] : [] },
-      },
+    wamid = await waSendMessage(cfg, {
+      to: msg.conversation.externalThreadId,
+      type: "template",
+      template: { name: tpl.name, language: { code: tpl.language }, components: params.length ? [{ type: "body", parameters: params.map((text) => ({ type: "text", text })) }] : [] },
     });
   } catch (e) {
     if (e instanceof GraphError && !e.auth && e.status >= 400 && e.status < 500 && e.status !== 429) {
@@ -377,7 +379,6 @@ export async function deliverWhatsappMessage(messageId: string) {
     await prisma.message.update({ where: { id: msg.id }, data: { status: "QUEUED", error: e instanceof Error ? e.message.slice(0, 500) : null } });
     return handleProviderError("WHATSAPP", e);
   }
-  const wamid = res.messages?.[0]?.id;
   if (!wamid) throw new Error("WhatsApp yanıtında mesaj kimliği yok");
   await prisma.message.update({ where: { id: msg.id }, data: { status: "SENT", externalMessageId: wamid, error: null } });
   await markConnectionOk("WHATSAPP");
@@ -432,8 +433,8 @@ export async function metaHealthCheck() {
   const wa = whatsappConfig();
   if (wa) {
     try {
-      const r = await graphRequest<{ display_phone_number?: string; verified_name?: string; quality_rating?: string }>(wa.phoneNumberId, { token: wa.token, query: { fields: "display_phone_number,verified_name,quality_rating" }, timeoutMs: 10_000 });
-      await markConnectionOk("WHATSAPP", { displayPhone: r.display_phone_number ?? null, verifiedName: r.verified_name ?? null, quality: r.quality_rating ?? null });
+      const info = await waHealth(wa);
+      await markConnectionOk("WHATSAPP", { provider: wa.provider, ...info });
       out.WHATSAPP = "ok";
     } catch (err) {
       await handleProviderError("WHATSAPP", err).catch(() => {});

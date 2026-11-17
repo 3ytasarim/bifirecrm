@@ -5,7 +5,9 @@ import type { IntegrationProvider } from "@prisma/client";
  * Saf fonksiyon: ağ/DB yok. Her olayın sağlayıcı kimliğinden türetilmiş tekil bir anahtarı vardır →
  * Meta aynı bildirimi yeniden gönderse de integration_events (provider, externalEventId) tekilliği ile bir kez işlenir.
  */
-export type MetaJobType = "meta.leadgen" | "instagram.message" | "whatsapp.message" | "whatsapp.status" | "whatsapp.sync_templates";
+export type MetaJobType = "meta.leadgen" | "instagram.message" | "whatsapp.message" | "whatsapp.history" | "whatsapp.status" | "whatsapp.sync_templates";
+/** Geçmiş aktarımının bir parçası (tek olay, worker içindeki mesajları sırayla işler). */
+export type WhatsappHistoryPayload = { messages: WhatsappMessagePayload[] };
 
 export type ParsedMetaEvent = {
   provider: IntegrationProvider;
@@ -17,7 +19,12 @@ export type ParsedMetaEvent = {
 
 export type LeadgenPayload = { leadgenId: string; formId: string | null; adId: string | null; pageId: string | null; createdTime: number | null };
 export type InstagramMessagePayload = { mid: string; accountId: string; igUserId: string; fromBusiness: boolean; text: string | null; kind: string; timestamp: number };
-export type WhatsappMessagePayload = { id: string; waId: string; name: string | null; kind: string; text: string | null; timestamp: number; phoneNumberId: string | null };
+/**
+ * outbound: işletmenin gönderdiği mesaj (coexistence: telefondaki WhatsApp Business uygulamasından yazılan yanıt, "echo").
+ * historical: bağlantı kurulurken uygulamadan aktarılan eski yazışma (bildirim/talep açılmaz, okunmamış sayılmaz).
+ * Eski kayıtlarda alanlar yoktur → false kabul edilir.
+ */
+export type WhatsappMessagePayload = { id: string; waId: string; name: string | null; kind: string; text: string | null; timestamp: number; phoneNumberId: string | null; outbound?: boolean; historical?: boolean };
 export type WhatsappStatusPayload = { id: string; status: string; recipientId: string | null; timestamp: number; error: string | null };
 
 const MAX_TEXT = 4096;
@@ -68,6 +75,55 @@ function whatsappSummary(m: Obj): { kind: string; text: string | null } {
     default:
       return { kind: "unsupported", text: "[Desteklenmeyen mesaj türü]" };
   }
+}
+
+/** Tek WhatsApp mesajı → olay. Gelen mesajda karşı taraf "from", işletmenin gönderdiğinde "to"dur. */
+function whatsappMessageEvent(m: Obj | null, o: { outbound: boolean; historical: boolean; phoneNumberId: string | null; name: string | null }): ParsedMetaEvent | null {
+  const id = safeId(m?.id);
+  const waId = str(o.outbound ? m?.to : m?.from)?.replace(/^\+/, "") ?? null;
+  if (!m || !id || !waId || !/^\d{6,15}$/.test(waId)) return null;
+  const { kind, text } = whatsappSummary(m);
+  const payload: WhatsappMessagePayload = { id, waId, name: o.name, kind, text, timestamp: (num(m.timestamp) ?? Math.floor(Date.now() / 1000)) * 1000, phoneNumberId: o.phoneNumberId, outbound: o.outbound, historical: o.historical };
+  // Aynı mesaj hem anlık hem geçmiş aktarımında gelebilir → anahtar yalnız mesaj kimliğidir.
+  return { provider: "WHATSAPP", externalEventId: `wa:${id}`, eventType: `${o.historical ? "history" : o.outbound ? "echo" : "message"}.${kind}`, jobType: "whatsapp.message", payload };
+}
+
+/**
+ * 360dialog coexistence olayları (Meta zarfı DIŞINDA gelenler): { event: "history" | "smb_app_state_sync", data: {...} }.
+ *  - history: bağlantı kurulurken telefondaki uygulamadan aktarılan eski yazışmalar (threads[].messages[]; "to" varsa işletmenin mesajı).
+ *  - smb_app_state_sync: telefon rehberi eşitlemesi — CRM'e alınmaz (kişi kartı yalnız gerçek yazışmayla açılır).
+ * Diğer gövdeler [] döner; Meta zarfı (object: whatsapp_business_account) için parseMetaWebhook kullanılır.
+ */
+export function parseD360Event(body: unknown, opts: { whatsappPhoneNumberId?: string | null } = {}): { events: ParsedMetaEvent[]; kind: "history" | "state_sync" | "other"; declined: boolean } {
+  const root = obj(body);
+  const event = str(root?.event);
+  const data = obj(root?.data);
+  if (event === "smb_app_state_sync") return { events: [], kind: "state_sync", declined: false };
+  if (event !== "history" || !data) return { events: [], kind: "other", declined: false };
+  const phoneNumberId = safeId(obj(data.metadata)?.phone_number_id);
+  if (opts.whatsappPhoneNumberId && phoneNumberId && phoneNumberId !== opts.whatsappPhoneNumberId) return { events: [], kind: "history", declined: false };
+  const messages: WhatsappMessagePayload[] = [];
+  const ids: string[] = [];
+  let declined = false;
+  for (const hRaw of arr(data.history)) {
+    const h = obj(hRaw);
+    if (arr(h?.errors).length) declined = true; // işletme geçmişi paylaşmayı reddetti (kod 2593109)
+    for (const tRaw of arr(h?.threads)) {
+      for (const mRaw of arr(obj(tRaw)?.messages)) {
+        const m = obj(mRaw);
+        const e = whatsappMessageEvent(m, { outbound: Boolean(str(m?.to)), historical: true, phoneNumberId, name: null });
+        if (e) {
+          messages.push(e.payload as WhatsappMessagePayload);
+          ids.push(e.externalEventId);
+        }
+      }
+    }
+  }
+  if (!messages.length) return { events: [], kind: "history", declined };
+  // Parça tek olay olarak saklanır (360dialog 5 sn içinde yanıt bekler). Anahtar: olay kimliği, yoksa içerik özeti.
+  const key = safeId(root?.id) ?? `${ids[0]}:${ids.at(-1)}:${ids.length}`;
+  const payload: WhatsappHistoryPayload = { messages };
+  return { events: [{ provider: "WHATSAPP", externalEventId: `wa-history:${key}`.slice(0, 250), eventType: "history", jobType: "whatsapp.history", payload }], kind: "history", declined };
 }
 
 export function parseMetaWebhook(body: unknown, opts: { whatsappPhoneNumberId?: string | null } = {}): ParsedMetaEvent[] {
@@ -126,10 +182,18 @@ export function parseMetaWebhook(body: unknown, opts: { whatsappPhoneNumberId?: 
           out.push({ provider: "WHATSAPP", externalEventId: `wa-template:${tid}:${str(v.event) ?? "?"}:${num(entry.time) ?? 0}`, eventType: "template_status", jobType: "whatsapp.sync_templates", payload: { templateId: tid, event: str(v.event), name: str(v.message_template_name) } });
           continue;
         }
-        if (field !== "messages") continue;
+        if (field !== "messages" && field !== "smb_message_echoes") continue;
         const phoneNumberId = safeId(obj(v.metadata)?.phone_number_id);
         // Aynı uygulamaya bağlı başka bir numaranın olayları bu CRM'e ait değildir.
         if (opts.whatsappPhoneNumberId && phoneNumberId && phoneNumberId !== opts.whatsappPhoneNumberId) continue;
+        // Coexistence: telefondaki uygulamadan gönderilen yanıtlar (alıcı = "to").
+        if (field === "smb_message_echoes") {
+          for (const mRaw of arr(v.message_echoes)) {
+            const e = whatsappMessageEvent(obj(mRaw), { outbound: true, historical: false, phoneNumberId, name: null });
+            if (e) out.push(e);
+          }
+          continue;
+        }
         const names = new Map<string, string>();
         for (const c of arr(v.contacts)) {
           const co = obj(c);
@@ -139,12 +203,8 @@ export function parseMetaWebhook(body: unknown, opts: { whatsappPhoneNumberId?: 
         }
         for (const mRaw of arr(v.messages)) {
           const m = obj(mRaw);
-          const id = safeId(m?.id);
-          const waId = str(m?.from);
-          if (!m || !id || !waId || !/^\d{6,15}$/.test(waId)) continue;
-          const { kind, text } = whatsappSummary(m);
-          const payload: WhatsappMessagePayload = { id, waId, name: names.get(waId) ?? null, kind, text, timestamp: (num(m.timestamp) ?? Math.floor(Date.now() / 1000)) * 1000, phoneNumberId };
-          out.push({ provider: "WHATSAPP", externalEventId: `wa:${id}`, eventType: `message.${kind}`, jobType: "whatsapp.message", payload });
+          const e = whatsappMessageEvent(m, { outbound: false, historical: false, phoneNumberId, name: names.get(str(m?.from) ?? "") ?? null });
+          if (e) out.push(e);
         }
         for (const sRaw of arr(v.statuses)) {
           const s = obj(sRaw);

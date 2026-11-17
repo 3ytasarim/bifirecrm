@@ -24,10 +24,12 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
     include: {
       contact: { select: { id: true, fullName: true, primaryPhone: true } },
       lead: { select: { id: true, status: true } },
-      messages: { orderBy: { occurredAt: "asc" }, take: 300 },
+      // Son 300 mesaj (geçmiş aktarımıyla yazışma uzun olabilir); ekranda eskiden yeniye.
+      messages: { orderBy: { occurredAt: "desc" }, take: 300 },
     },
   });
   if (!conv) notFound();
+  conv.messages.reverse();
   if (conv.unreadCount > 0) await markConversationRead(actor, conv.id);
 
   const canSend = actor.perms.has("messages.send");
@@ -55,6 +57,8 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
                       <p className="mt-1 text-right text-[11px] text-muted">
                         {fmtDateTime(m.occurredAt)}
                         {out ? ` · ${MESSAGE_STATUS_LABELS[m.status]}` : ""}
+                        {/* CRM dışından (telefondaki uygulamadan) yazılan yanıt: gönderen kullanıcı yok. */}
+                        {out && !m.sentById ? " · uygulamadan" : ""}
                         {m.type === "template" ? " · şablon" : ""}
                       </p>
                       {m.status === "FAILED" && m.error ? <p className="mt-1 text-xs text-danger">{m.error}</p> : null}

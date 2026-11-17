@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { claimJobs, completeJob, failJob, type Job } from "./queue";
 import { runReminderScan } from "./reminders";
 import { ingestWebsiteEvent, markWebsiteEventFailed } from "@/lib/services/website-intake";
-import { deliverWhatsappMessage, markEventFailed, markOutboundDead, metaHealthCheck, processInstagramMessage, processLeadgen, processWhatsappMessage, processWhatsappStatus, syncWhatsappTemplates } from "@/lib/services/channels";
+import { deliverWhatsappMessage, markEventFailed, markOutboundDead, metaHealthCheck, processInstagramMessage, processLeadgen, processWhatsappHistory, processWhatsappMessage, processWhatsappStatus, syncWhatsappTemplates } from "@/lib/services/channels";
 import { googleHealthCheck, syncAppointmentToGoogle } from "@/lib/services/calendar-sync";
 
 const eventIdOf = (job: Job) => {
@@ -25,6 +25,8 @@ export const handlers: Record<string, (job: Job) => Promise<unknown>> = {
   "meta.leadgen": (job) => processLeadgen(eventIdOf(job)),
   "instagram.message": (job) => processInstagramMessage(eventIdOf(job)),
   "whatsapp.message": (job) => processWhatsappMessage(eventIdOf(job)),
+  /** 360dialog coexistence: bağlantı anında telefondaki uygulamadan aktarılan eski yazışmalar (sessiz). */
+  "whatsapp.history": (job) => processWhatsappHistory(eventIdOf(job)),
   "whatsapp.status": (job) => processWhatsappStatus(eventIdOf(job), job.attempts),
   "whatsapp.sync_templates": async (job) => {
     const r = await syncWhatsappTemplates();

@@ -7,7 +7,7 @@ import { audit } from "@/lib/audit";
 import { RuleError } from "@/lib/errors";
 import { assertCan, getActorOrNull, requirePermission } from "@/lib/rbac/guard";
 import { retryJobNow } from "@/lib/jobs/queue";
-import { missingEnv, REQUIRED_ENV } from "@/lib/integrations/channels-config";
+import { missingEnv, requiredEnv, whatsappProvider } from "@/lib/integrations/channels-config";
 import { requestTemplateSync } from "@/lib/services/channels";
 import { disconnectGoogleCalendar } from "@/lib/services/calendar-sync";
 import { pullWebsiteRequests, websitePullConfig } from "@/lib/integrations/website-pull";
@@ -23,7 +23,7 @@ const REQUIREMENTS: Record<IntegrationProvider, { phase: string; needs: string }
   BIFIRE_WEBSITE: { phase: "Faz 2", needs: "İki yol, aynı HMAC sırrı (CRM: WEBSITE_HMAC_SECRET, site: CRM_WEBSITE_HMAC_SECRET). Çekme: CRM’de WEBSITE_PULL_URL + sitede CRM_PULL_ENABLED=true; worker 2 dakikada bir yeni formları alır. Gönderme: sitede CRM_FORWARD_ENABLED=true (CRM canlıdayken)." },
   META_LEAD_ADS: { phase: "Faz 4", needs: "Meta Business Manager, Facebook sayfası, Meta uygulaması (leads_retrieval + pages_manage_metadata, App Review), sayfaya leadgen webhook aboneliği, sistem kullanıcısı erişim anahtarı." },
   INSTAGRAM_DM: { phase: "Faz 4", needs: "Instagram profesyonel hesabı (sayfaya bağlı), instagram_manage_messages izni + App Review, messages webhook aboneliği. CRM gelen mesajı gösterir; yanıt Instagram uygulamasından verilir." },
-  WHATSAPP: { phase: "Faz 4", needs: "WhatsApp Business hesabı (WABA), CRM için AYRI doğrulanmış numara, sistem kullanıcısı anahtarı (whatsapp_business_messaging), Meta'da onaylı şablonlar, messages webhook aboneliği." },
+  WHATSAPP: { phase: "Faz 4", needs: "360dialog (WHATSAPP_PROVIDER=360dialog: mevcut WhatsApp Business uygulaması numarası korunur, D360_API_KEY + D360_WEBHOOK_SECRET) ya da doğrudan Meta: WhatsApp Business hesabı (WABA), AYRI doğrulanmış numara, sistem kullanıcısı anahtarı (whatsapp_business_messaging), Meta'da onaylı şablonlar, messages webhook aboneliği." },
   GOOGLE_CALENDAR: { phase: "Faz 4", needs: "Google Cloud OAuth istemcisi (Web uygulaması), yönlendirme adresi bu sayfada; ardından “Google ile bağlan”. Randevular tek yönlü (CRM → Google) yazılır." },
   SMTP: { phase: "Faz 1 (opsiyonel)", needs: "SMTP_URL ve SMTP_FROM .env'e eklenince ekip bildirim e-postaları açılır." },
 };
@@ -108,6 +108,16 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
 
   const extra = (p: IntegrationProvider) => {
     const cfg = (connections.find((x) => x.provider === p)?.config ?? {}) as Record<string, string | null>;
+    if (p === "WHATSAPP" && whatsappProvider() === "360dialog") {
+      return (
+        <p className="mt-1 text-xs text-muted">
+          Sağlayıcı: 360dialog (numara telefondaki WhatsApp Business uygulamasında da kalır; oradan yazılan yanıtlar burada “uygulamadan” etiketiyle görünür).
+          <span className="block">
+            Webhook adresi: <code className="rounded bg-surface-2 px-1 font-mono">{appUrl}/api/v1/webhooks/whatsapp-360dialog</code> · kayıt: <code className="font-mono">scripts/d360-webhook.ts --apply</code>
+          </span>
+        </p>
+      );
+    }
     if (p === "META_LEAD_ADS" || p === "INSTAGRAM_DM" || p === "WHATSAPP") {
       return (
         <p className="mt-1 text-xs text-muted">
@@ -181,7 +191,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
         <ul className="divide-y divide-line">
           {(Object.keys(PROVIDER_LABELS) as IntegrationProvider[]).map((p) => {
             const c = connections.find((x) => x.provider === p);
-            const missing = REQUIRED_ENV[p] ? missingEnv(p) : [];
+            const missing = requiredEnv(p) ? missingEnv(p) : [];
             const status = p === "SMTP" ? (smtp ? "ACTIVE" : "NOT_CONFIGURED") : p === "GOOGLE_CALENDAR" && !googleCred ? "NOT_CONFIGURED" : (c?.status ?? "NOT_CONFIGURED");
             return (
               <li key={p} className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
@@ -200,7 +210,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
                 </div>
                 <div className="text-right text-xs">
                   <Badge tone={status === "ACTIVE" ? "success" : status === "ERROR" ? "danger" : "neutral"}>{CONNECTION_STATUS_LABELS[status]}</Badge>
-                  {status === "NOT_CONFIGURED" && REQUIRED_ENV[p] && !missing.length && p !== "GOOGLE_CALENDAR" ? <p className="mt-1 text-muted">Anahtarlar var, henüz doğrulanmadı</p> : null}
+                  {status === "NOT_CONFIGURED" && requiredEnv(p) && !missing.length && p !== "GOOGLE_CALENDAR" ? <p className="mt-1 text-muted">Anahtarlar var, henüz doğrulanmadı</p> : null}
                   <p className="mt-1 text-muted">Son senkron: {c?.lastSyncAt ? fmtRelative(c.lastSyncAt) : "—"}</p>
                 </div>
               </li>
