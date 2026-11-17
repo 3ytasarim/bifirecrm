@@ -58,7 +58,10 @@ let cached: Env | null = null;
 
 export function env(): Env {
   if (cached) return cached;
-  const parsed = schema.safeParse(process.env);
+  // `.env`'de değeri boş bırakılan satır (ör. `WEBSITE_PULL_URL=`) "tanımsız" sayılır; aksi halde
+  // isteğe bağlı URL/enum alanları "geçersiz" olur ve tüm uygulama durur.
+  const defined = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined && v.trim() !== ""));
+  const parsed = schema.safeParse(defined);
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Ortam değişkenleri geçersiz: ${msg}`);
