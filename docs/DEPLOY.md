@@ -35,6 +35,15 @@ Migration'lar yalnız **ekleyici** (kolon/tablo ekleme) tutulur; silme/yeniden a
 2. Ekleyici migration'lar eski kodla uyumludur → DB geri alınmaz.
 3. Veri hatası varsa `BACKUP_RESTORE.md`.
 
+## E-posta bildirimleri (SMTP)
+Yeni talep / mesaj, atama, randevu ve görev hatırlatma / gecikme bildirimleri, ilgili çalışanın CRM'deki e-posta adresine de gider (worker, dakikada bir). Müşteriye e-posta gönderilmez.
+1. Sunucu `.env`: `SMTP_URL=smtps://destek%40bifiresomine.com:<şifre>@mail.kurumsaleposta.com:465` (alan adının e-postası kurumsaleposta.com'da; `mail.bifiresomine.com` DNS'te YOK. Kullanıcı adındaki `@` → `%40`, şifredeki özel karakterler URL-kodlu), `SMTP_FROM=Bifire CRM <destek@bifiresomine.com>` (SMTP hesabının kendi adresi), isteğe bağlı `NOTIFY_EMAIL_COPY_TO=emrah@bifiresomine.com` (tüm bildirimlerin kopyası; olay başına tek e-posta).
+   - **Port 587 seçildi:** `SMTP_URL=smtp://destek%40bifiresomine.com:<şifre>@mail.kurumsaleposta.com:587` + `SMTP_TLS_INSECURE=true`. Sebep: 587'nin sertifikası (`*.natrohost.com`) 12.07.2026'da süresi dolmuş ve ad uyuşmuyor; bu ayar olmadan gönderim "certificate has expired" ile düşer. Ayar sertifika doğrulamasını kapatır ama STARTTLS'i zorunlu tutar (şifresiz bağlantıya düşmez). Risk: araya giren biri sahte sertifikayla şifreyi görebilir. Natro sertifikayı yenileyince `SMTP_TLS_INSECURE` satırını silin (ya da 465'e geçin: `smtps://…:465`, sertifikası geçerli).
+2. `pm2 restart bifire-crm bifire-crm-worker --update-env`. CRM › Ayarlar › Sistem: "E-posta (SMTP): Yapılandırıldı".
+3. Her çalışanın CRM kullanıcısındaki e-posta adresi gerçek kutusu olmalı (Kullanıcılar ekranı). Kişi Ayarlar'dan e-posta bildirimini kapatabilir.
+4. Test: kendinize görev atayıp 1 dk sonrasına hatırlatma koyun → e-posta gelmeli. Gelmezse `pm2 logs bifire-crm-worker` → "e-posta bildirimi: … hata=…".
+5. Son 6 saatten eski bildirimler e-postalanmaz (SMTP sonradan açılınca yığın gitmez). Davet / şifre sıfırlama e-postaları da aynı SMTP'yi kullanır.
+
 ## Faz 2: siteyi CRM'e bağlama (onayla, CRM canlıya alındıktan sonra)
 1. Sır üret: `openssl rand -base64 48` → CRM `.env` `WEBSITE_HMAC_SECRET`, site `.env` `CRM_WEBSITE_HMAC_SECRET` (aynı değer). `pm2 restart bifire-crm --update-env`.
 2. Site deploy (kod; bayrak hâlâ `false`). Site davranışı değişmez.

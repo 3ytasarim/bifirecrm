@@ -3,7 +3,7 @@
  * Çalıştırma: npm run worker  (tsx --conditions=react-server)
  *            npm run worker -- --once  (tek tur: tarama + kuyruk; cron/test için)
  *  - integration_jobs kuyruğunu işler (retry / dead-letter) — işleyiciler: src/lib/jobs/handlers.ts.
- *  - Dakikada bir görev hatırlatma / gecikme / eskalasyon taraması.
+ *  - Dakikada bir görev hatırlatma / gecikme / eskalasyon taraması + bildirimlerin e-posta kopyası (SMTP tanımlıysa).
  *  - 2 dakikada bir site formlarını çekme (WEBSITE_PULL_URL tanımlıysa; src/lib/integrations/website-pull.ts).
  *  - Saatte bir kanal sağlık kontrolü (Meta / WhatsApp / Google anahtarları gerçek çağrıyla denenir).
  */
@@ -11,6 +11,7 @@ import "dotenv/config";
 import { hostname } from "node:os";
 import { prisma } from "@/lib/db";
 import { runReminderScan } from "@/lib/jobs/reminders";
+import { sendPendingNotificationEmails } from "@/lib/jobs/notification-mail";
 import { handlers, processBatch } from "@/lib/jobs/handlers";
 import { pullWebsiteRequests } from "@/lib/integrations/website-pull";
 
@@ -38,6 +39,12 @@ async function websitePull() {
   if (r.error || r.imported || r.invalid) console.log(`[worker] site çekme: yeni=${r.imported} tekrar=${r.duplicates} geçersiz=${r.invalid}${r.error ? ` hata=${r.error}` : ""}`);
 }
 
+/** Bildirimlerin e-posta kopyası (SMTP yoksa hiçbir şey yapmaz). Alıcı/içerik loglanmaz. */
+async function notificationEmails() {
+  const r = await sendPendingNotificationEmails();
+  if (r.sent || r.copies || r.error) console.log(`[worker] e-posta bildirimi: gönderildi=${r.sent} kopya=${r.copies}${r.error ? ` hata=${r.error}` : ""}`);
+}
+
 async function main() {
   console.log(`[worker] başladı ${WORKER_ID}`);
   if (process.argv.includes("--once")) {
@@ -45,6 +52,7 @@ async function main() {
     await pruneNonces();
     await websitePull();
     const n = await processBatch(WORKER_ID, 20);
+    await notificationEmails();
     console.log(`[worker] tek tur: hatırlatma=${r.reminded} gecikme=${r.overdue} eskalasyon=${r.escalated} iş=${n}`);
     await prisma.$disconnect();
     return;
@@ -59,6 +67,7 @@ async function main() {
         await pruneNonces();
         const r = await runReminderScan();
         if (r.reminded || r.escalated) console.log(`[worker] hatırlatma=${r.reminded} gecikme=${r.overdue} eskalasyon=${r.escalated}`);
+        await notificationEmails();
       }
       if (Date.now() - lastPull > 120_000) {
         lastPull = Date.now();

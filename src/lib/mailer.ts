@@ -12,7 +12,11 @@ export function mailConfigured() {
 export async function sendInternalMail(to: string, subject: string, text: string): Promise<boolean> {
   if (!mailConfigured()) return false;
   const nodemailer = await import("nodemailer");
-  const transport = nodemailer.createTransport(env().SMTP_URL);
-  await transport.sendMail({ from: env().SMTP_FROM, to, subject, text });
+  const e = env();
+  // SMTP_TLS_INSECURE: sertifika doğrulaması kapalı, ama şifresiz (düz metin) bağlantıya asla düşülmez.
+  const transport = e.SMTP_TLS_INSECURE
+    ? nodemailer.createTransport({ url: e.SMTP_URL, requireTLS: true, tls: { rejectUnauthorized: false } })
+    : nodemailer.createTransport(e.SMTP_URL);
+  await transport.sendMail({ from: e.SMTP_FROM, to, subject, text });
   return true;
 }

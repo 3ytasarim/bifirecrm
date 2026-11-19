@@ -58,7 +58,7 @@ export default async function SettingsPage() {
           <form action={toggleEmailNotifications} className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-4 text-sm">
             <input type="hidden" name="on" value={user.emailNotifications ? "0" : "1"} />
             <span>
-              Görev e-posta bildirimleri: <strong>{user.emailNotifications ? "Açık" : "Kapalı"}</strong>
+              E-posta bildirimleri (yeni talep/mesaj, atama, randevu, görev hatırlatma): <strong>{user.emailNotifications ? "Açık" : "Kapalı"}</strong>
               {!mailConfigured() ? <span className="block text-xs text-muted">SMTP yapılandırılınca gönderilir; şu an yalnız bildirim merkezi.</span> : null}
             </span>
             <button className={buttonClass("secondary", "sm")}>{user.emailNotifications ? "Kapat" : "Aç"}</button>

@@ -21,6 +21,21 @@ const schema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().optional(),
   SMTP_URL: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+  // Yalnız sağlayıcının sertifikası bozuk/süresi dolmuşsa (ör. kurumsaleposta 587): sertifika DOĞRULANMAZ ama
+  // bağlantı yine şifreli olmak zorundadır (STARTTLS yoksa gönderim yapılmaz). Sertifika düzelince kaldırın.
+  SMTP_TLS_INSECURE: z.enum(["true", "false"]).optional().transform((v) => v === "true"),
+  // Tüm e-posta bildirimlerinin kopyasının gideceği sabit adres(ler), virgülle (ör. yönetici). Olay başına tek kopya.
+  NOTIFY_EMAIL_COPY_TO: z
+    .string()
+    .optional()
+    // Geçersiz adres uygulamayı durdurmaz, yok sayılır (yazım hatası tüm CRM'i düşürmesin). En fazla 5 adres.
+    .transform((v) =>
+      (v ?? "")
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => z.string().email().safeParse(s).success)
+        .slice(0, 5),
+    ),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().max(100).default(20),
   WEBSITE_HMAC_SECRET: z.string().optional(),
   // CRM → site çekme: sitenin adresi (ör. https://www.bifiresomine.com). Boşsa çekme kapalı.
