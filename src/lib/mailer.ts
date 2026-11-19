@@ -9,7 +9,7 @@ export function mailConfigured() {
   return Boolean(env().SMTP_URL && env().SMTP_FROM);
 }
 
-export async function sendInternalMail(to: string, subject: string, text: string): Promise<boolean> {
+export async function sendInternalMail(to: string, subject: string, text: string, html?: string): Promise<boolean> {
   if (!mailConfigured()) return false;
   const nodemailer = await import("nodemailer");
   const e = env();
@@ -17,6 +17,6 @@ export async function sendInternalMail(to: string, subject: string, text: string
   const transport = e.SMTP_TLS_INSECURE
     ? nodemailer.createTransport({ url: e.SMTP_URL, requireTLS: true, tls: { rejectUnauthorized: false } })
     : nodemailer.createTransport(e.SMTP_URL);
-  await transport.sendMail({ from: e.SMTP_FROM, to, subject, text });
+  await transport.sendMail({ from: e.SMTP_FROM, to, subject, text, ...(html ? { html } : {}) });
   return true;
 }

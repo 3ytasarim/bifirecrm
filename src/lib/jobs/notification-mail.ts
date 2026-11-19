@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { mailConfigured, sendInternalMail } from "@/lib/mailer";
+import { loadMailDetails, type MailDetails } from "@/lib/jobs/notification-details";
+import { notificationMail } from "@/lib/jobs/notification-mail-template";
+
+export { notificationMail };
 
 /**
  * İç bildirimlerin e-posta kopyası (worker, dakikada bir). Müşteriye değil, ilgili ÇALIŞANA gider.
@@ -15,21 +19,6 @@ export const EMAIL_TYPES = ["lead", "message", "assignment", "appointment", "tas
 const MAX_AGE_MS = 6 * 3600_000;
 const BATCH = 25;
 const SIBLING_WINDOW_MS = 10 * 60_000;
-
-type Note = { type: string; title: string; body: string | null; link: string | null };
-
-/** E-posta metni. `user` yoksa kopya alıcısı içindir; `forName` bildirimin asıl sahibini belirtir. */
-export function notificationMail(n: Note, user: { name: string } | null, appUrl: string, forName?: string) {
-  const base = appUrl.replace(/\/$/, "");
-  const url = n.link ? base + (n.link.startsWith("/") ? "" : "/") + n.link : base;
-  const subject = ("Bifire CRM · " + n.title).replace(/[\r\n]+/g, " ").slice(0, 180);
-  const lines = [user ? `Merhaba ${user.name},` : "Merhaba,", "", n.title];
-  if (n.body) lines.push("", n.body);
-  if (forName) lines.push("", `(Bilgi kopyası: bildirim ${forName} kişisine gitti.)`);
-  lines.push("", `Görüntülemek için: ${url}`, "", "—");
-  lines.push(user ? "Bu e-posta Bifire CRM bildirimidir. Bildirim e-postalarını CRM › Ayarlar'dan kapatabilirsiniz." : "Bu e-posta Bifire CRM bildirim kopyasıdır.");
-  return { subject, text: lines.join("\n") };
-}
 
 /**
  * `onlyUserIds`: yalnız QA betiği için (gerçek bildirimlere dokunmasın).
@@ -54,6 +43,13 @@ export async function sendPendingNotificationEmails(now = new Date(), opts: { on
   let sent = 0;
   let copies = 0;
   let skipped = 0;
+  // Aynı kayda giden bildirimler (kişi + kopya, birden çok kişi) detayı bir kez yükler.
+  const detailCache = new Map<string, Promise<MailDetails | null>>();
+  const details = (link: string | null) => {
+    if (!link) return Promise.resolve(null);
+    if (!detailCache.has(link)) detailCache.set(link, loadMailDetails(link, now));
+    return detailCache.get(link)!;
+  };
   for (const n of pending) {
     const toUser = n.user.status === "ACTIVE" && n.user.emailNotifications;
     let copyRecipients: string[] = [];
@@ -73,14 +69,15 @@ export async function sendPendingNotificationEmails(now = new Date(), opts: { on
       if (!sibling) copyRecipients = copyTo.filter((a) => !(toUser && a === n.user.email.toLowerCase()));
     }
     try {
+      const d = toUser || copyRecipients.length ? await details(n.link) : null;
       if (toUser) {
-        const m = notificationMail(n, n.user, e.APP_URL);
-        await sendInternalMail(n.user.email, m.subject, m.text);
+        const m = notificationMail(n, { appUrl: e.APP_URL, userName: n.user.name, details: d });
+        await sendInternalMail(n.user.email, m.subject, m.text, m.html);
         sent++;
       }
       if (copyRecipients.length) {
-        const m = notificationMail(n, null, e.APP_URL, n.user.name);
-        await sendInternalMail(copyRecipients.join(", "), m.subject, m.text);
+        const m = notificationMail(n, { appUrl: e.APP_URL, forName: n.user.name, details: d });
+        await sendInternalMail(copyRecipients.join(", "), m.subject, m.text, m.html);
         copies++;
       }
     } catch (err) {

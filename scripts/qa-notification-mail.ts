@@ -65,6 +65,13 @@ function decodeBody(raw: string): string {
   return body;
 }
 
+/** Çok parçalı e-postanın tüm parçalarını çözer (düz metin + HTML). */
+function decodeAll(raw: string): string {
+  const b = /boundary="?([^";\n]+)"?/i.exec(raw)?.[1];
+  if (!b) return decodeBody(raw);
+  return raw.split("--" + b).slice(1).map((part) => decodeBody(part.replace(/^\n/, ""))).join("\n");
+}
+
 let fails = 0;
 const ok = (cond: unknown, msg: string) => {
   console.log(`${cond ? "PASS" : "FAIL"}  ${msg}`);
@@ -87,6 +94,8 @@ async function main() {
   const on = await mk("qa-mail-acik@example.test", "QA Satış", true);
   const off = await mk("qa-mail-kapali@example.test", "QA Kapalı", false);
   const ids = [on.id, off.id];
+  let contactId: string | null = null;
+  let taskId: string | null = null;
   const run = (now?: Date) => sendPendingNotificationEmails(now ?? new Date(), { onlyUserIds: ids });
 
   try {
@@ -103,10 +112,11 @@ async function main() {
     ok(to(on.email).length === 2 && to(off.email).length === 0, "kişiye: açık kullanıcıya 2, kapalı kullanıcıya 0");
     ok(to(COPY).length === 3 && mails.every((m) => m.to.length === 1), "kopya adresine her olay için 1 e-posta (kapalı kullanıcınınki dahil)");
     const lead = mails.find((m) => /Yeni talep/.test(m.data));
-    ok(lead && /Subject: .*Bifire CRM/.test(lead.data.replace(/=\?UTF-8\?[QB]\?[^?]*\?=/gi, "Bifire CRM")), "konu satırı var");
-    const body = to(on.email).map((m) => decodeBody(m.data)).join("\n");
+    ok(lead && /^Subject: /m.test(lead.data), "konu satırı var");
+    ok(lead && /multipart\/alternative/i.test(lead.data) && /text\/html/i.test(lead.data), "HTML + düz metin birlikte gönderildi");
+    const body = to(on.email).map((m) => decodeAll(m.data)).join("\n");
     ok(/https?:\/\/\S+\/firsatlar\/qa-1/.test(body) && /\/gorevler\?id=qa-2/.test(body) && /Merhaba QA Satış/.test(body), "e-postada ad + CRM bağlantısı var");
-    const copyBody = to(COPY).map((m) => decodeBody(m.data)).join("\n");
+    const copyBody = to(COPY).map((m) => decodeAll(m.data)).join("\n");
     ok(/Bilgi kopyası: bildirim QA Satış/.test(copyBody) && /Bilgi kopyası: bildirim QA Kapalı/.test(copyBody), "kopyada asıl alıcı belirtilmiş");
     ok(!/QA aşama değişti/.test(body + copyBody), "e-posta türü olmayan bildirim gönderilmedi");
     ok(!(await prisma.internalNotification.findUnique({ where: { id: old.id } }))?.emailedAt && !/QA eski talep/.test(body + copyBody), "6 saatten eski bildirim gönderilmedi");
@@ -121,6 +131,18 @@ async function main() {
     const r5 = await run();
     ok(r5.sent === 1 && r5.copies === 1 && to(COPY).length === before + 1, `ortak olay: kopya tek (${JSON.stringify(r5)})`);
 
+    // Detay: bağlantı gerçek bir göreve gidiyorsa müşteri adı/telefonu/son tarih e-postaya eklenir.
+    const contact = await prisma.contact.create({ data: { firstName: "QA Detay", fullName: "QA Detay Müşteri", primaryPhone: "+905000000001", primaryEmail: "qa-detay@example.test" } });
+    contactId = contact.id;
+    const task = await prisma.task.create({ data: { title: "QA ilk dönüş", description: "QA görev notu", dueAt: new Date(Date.now() + 3600_000), priority: "HIGH", contactId: contact.id, assigneeId: on.id } });
+    taskId = task.id;
+    const n6 = mails.length;
+    await notify({ userId: on.id, type: "task_reminder", title: "Hatırlatma: QA ilk dönüş", link: `/gorevler?id=${task.id}` });
+    const r6 = await run();
+    const det = mails.slice(n6).map((m) => decodeAll(m.data)).join("\n");
+    ok(r6.sent === 1 && /QA Detay Müşteri/.test(det) && /\+90 500 000 00 01/.test(det) && /tel:\+905000000001/.test(det) && /wa\.me\/905000000001/.test(det), "detay: müşteri, telefon, Ara + WhatsApp düğmesi");
+    ok(/QA görev notu/.test(det) && /Yüksek/.test(det) && /Son tarih/.test(det), "detay: görev notu, öncelik, son tarih");
+
     // SMTP geçici hatası: bildirim işaretlenmez, sonraki turda gider.
     failMode = true;
     const n0 = mails.length;
@@ -131,6 +153,8 @@ async function main() {
     const r4 = await run();
     ok(r4.sent === 1 && r4.copies === 1 && mails.length === n0 + 2, "hata sonrası bir sonraki turda gönderildi (kişi + kopya)");
   } finally {
+    if (taskId) await prisma.task.delete({ where: { id: taskId } });
+    if (contactId) await prisma.contact.deleteMany({ where: { id: contactId, primaryEmail: { endsWith: "@example.test" } } });
     await prisma.internalNotification.deleteMany({ where: { userId: { in: ids } } });
     await prisma.user.deleteMany({ where: { id: { in: ids }, email: { endsWith: "@example.test" } } });
     await prisma.$disconnect();
