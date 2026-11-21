@@ -12,7 +12,8 @@ import { requestTemplateSync } from "@/lib/services/channels";
 import { disconnectGoogleCalendar } from "@/lib/services/calendar-sync";
 import { pullWebsiteRequests, websitePullConfig } from "@/lib/integrations/website-pull";
 import { CONNECTION_STATUS_LABELS, JOB_STATUS_LABELS, PROVIDER_LABELS, WA_TEMPLATE_CATEGORY_LABELS } from "@/lib/labels";
-import { fmtDateTime, fmtRelative } from "@/lib/format";
+import { fmtDateTime, fmtRelative, nowMs } from "@/lib/format";
+import { type IgSyncState, instagramSyncConfig, syncInstagramConversations } from "@/lib/services/instagram-sync";
 import { Badge, Card, EmptyState, PageHeader, Stat, tableCls } from "@/components/ui/primitives";
 import { buttonClass } from "@/components/ui/styles";
 
@@ -22,7 +23,7 @@ export const metadata = { title: "Entegrasyonlar" };
 const REQUIREMENTS: Record<IntegrationProvider, { phase: string; needs: string }> = {
   BIFIRE_WEBSITE: { phase: "Faz 2", needs: "İki yol, aynı HMAC sırrı (CRM: WEBSITE_HMAC_SECRET, site: CRM_WEBSITE_HMAC_SECRET). Çekme: CRM’de WEBSITE_PULL_URL + sitede CRM_PULL_ENABLED=true; worker 2 dakikada bir yeni formları alır. Gönderme: sitede CRM_FORWARD_ENABLED=true (CRM canlıdayken)." },
   META_LEAD_ADS: { phase: "Faz 4", needs: "Meta Business Manager, Facebook sayfası, Meta uygulaması (leads_retrieval + pages_manage_metadata, App Review), sayfaya leadgen webhook aboneliği, sistem kullanıcısı erişim anahtarı." },
-  INSTAGRAM_DM: { phase: "Faz 4", needs: "Instagram profesyonel hesabı (sayfaya bağlı), instagram_manage_messages izni + App Review, messages webhook aboneliği. CRM gelen mesajı gösterir; yanıt Instagram uygulamasından verilir." },
+  INSTAGRAM_DM: { phase: "Faz 4", needs: "Instagram profesyonel hesabı (sayfaya bağlı), instagram_manage_messages izni, messages webhook aboneliği + dakikalık API senkronu (yedek). CRM gelen mesajı gösterir; yanıt Instagram uygulamasından verilir (CRM'den gönderim yok)." },
   WHATSAPP: { phase: "Faz 4", needs: "360dialog (WHATSAPP_PROVIDER=360dialog: mevcut WhatsApp Business uygulaması numarası korunur, D360_API_KEY + D360_WEBHOOK_SECRET) ya da doğrudan Meta: WhatsApp Business hesabı (WABA), AYRI doğrulanmış numara, sistem kullanıcısı anahtarı (whatsapp_business_messaging), Meta'da onaylı şablonlar, messages webhook aboneliği." },
   GOOGLE_CALENDAR: { phase: "Faz 4", needs: "Google Cloud OAuth istemcisi (Web uygulaması), yönlendirme adresi bu sayfada; ardından “Google ile bağlan”. Randevular tek yönlü (CRM → Google) yazılır." },
   SMTP: { phase: "Faz 1 (opsiyonel)", needs: "SMTP_URL ve SMTP_FROM .env'e eklenince ekip bildirim e-postaları açılır." },
@@ -83,7 +84,19 @@ async function pullWebsite() {
   redirect(`/entegrasyonlar?site=${q}`);
 }
 
-type SP = { google?: string; neden?: string; wa?: string; site?: string };
+async function syncInstagram() {
+  "use server";
+  const actor = await getActorOrNull();
+  if (!actor) return;
+  assertCan(actor, "integrations.manage");
+  // Worker ile aynı DB kilidi: aynı anda çalışıyorsa bu istek "meşgul" döner, çift kayıt oluşmaz.
+  const r = await syncInstagramConversations({ owner: `web:${actor.id}`, timeBudgetMs: 45_000 });
+  const q = !r.enabled ? "kapali" : r.skipped !== undefined ? (r.skipped === "locked" ? "mesgul" : "bekle") : r.error ? "hata" : `tamam-${r.added}`;
+  await audit({ actorId: actor.id, action: "integration_pull", entityType: "integration", entityId: "INSTAGRAM_DM", summary: `instagram senkron: ${q}` });
+  redirect(`/entegrasyonlar?ig=${q}`);
+}
+
+type SP = { google?: string; neden?: string; wa?: string; site?: string; ig?: string };
 
 export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const actor = await requirePermission("integrations.view");
@@ -104,6 +117,17 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   const waMsg = sp.wa === "sira" ? "Şablon senkronu kuyruğa alındı; worker birkaç saniye içinde Meta'dan çeker." : sp.wa === "yapilandirilmadi" ? "WhatsApp anahtarları .env'de tanımlı değil." : sp.wa === "hata" ? "Şablon senkronu başlatılamadı." : null;
 
   const pullCfg = websitePullConfig();
+  const igMsg = sp.ig?.startsWith("tamam-")
+    ? `Instagram senkronu tamamlandı: ${Number(sp.ig.slice(6)) || 0} yeni mesaj.`
+    : sp.ig === "mesgul"
+      ? "Instagram senkronu şu an worker'da çalışıyor; birkaç saniye sonra sayfayı yenileyin."
+      : sp.ig === "bekle"
+        ? "Instagram senkronu önceki hatadan sonra bekleme süresinde; ayrıntı aşağıda."
+        : sp.ig === "kapali"
+          ? "Instagram senkronu kapalı: META_ACCESS_TOKEN ve INSTAGRAM_ACCOUNT_ID tanımlı değil."
+          : sp.ig === "hata"
+            ? "Instagram senkronu başarısız; ayrıntı aşağıdaki senkron hatasında."
+            : null;
   const siteMsg = sp.site?.startsWith("tamam-") ? `Site formları çekildi: ${Number(sp.site.slice(6)) || 0} yeni başvuru. Müşteri/fırsat kaydı worker tarafından birkaç saniyede açılır.` : sp.site === "kapali" ? "Çekme kapalı: WEBSITE_PULL_URL ve WEBSITE_HMAC_SECRET tanımlı değil." : sp.site === "hata" ? "Siteden çekilemedi; ayrıntı aşağıdaki son hatada." : null;
 
   const extra = (p: IntegrationProvider) => {
@@ -118,7 +142,35 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
         </p>
       );
     }
-    if (p === "META_LEAD_ADS" || p === "INSTAGRAM_DM" || p === "WHATSAPP") {
+    if (p === "INSTAGRAM_DM") {
+      const ig = ((connections.find((x) => x.provider === p)?.config ?? {}) as { igSync?: IgSyncState }).igSync ?? {};
+      const backoff = ig.backoffUntil && new Date(ig.backoffUntil).getTime() > nowMs() ? ig.backoffUntil : null;
+      return (
+        <div className="mt-1 space-y-0.5 text-xs text-muted">
+          <p>
+            Webhook adresi: <code className="rounded bg-surface-2 px-1 font-mono">{appUrl}/api/v1/webhooks/meta</code> · doğrulama anahtarı: <code className="font-mono">META_VERIFY_TOKEN</code>
+          </p>
+          <p>
+            API senkronu (dakikada bir, webhook yedeği): son başarılı {ig.lastSuccessAt ? `${fmtDateTime(ig.lastSuccessAt)} (${fmtRelative(ig.lastSuccessAt)})` : "henüz yok"}
+            {ig.lastRunAt ? ` · son deneme ${fmtRelative(ig.lastRunAt)}` : ""}
+            {ig.lastStats ? ` · son tur: ${ig.lastStats.conversations} görüşme, ${ig.lastStats.added} yeni mesaj` : ""}
+          </p>
+          {ig.lastError ? (
+            <p className="text-danger">
+              Senkron hatası ({ig.lastErrorAt ? fmtDateTime(ig.lastErrorAt) : "—"}): {ig.lastError}
+              {backoff ? ` · yeniden deneme ${fmtRelative(backoff)}` : ""}
+            </p>
+          ) : null}
+          <p>Yanıt gönderme: CRM&apos;den Instagram&apos;a yanıt henüz yok; yanıtlar Instagram uygulamasından verilir ve buraya otomatik düşer.</p>
+          {canManage && instagramSyncConfig() ? (
+            <form action={syncInstagram} className="mt-2">
+              <button className={buttonClass("secondary", "sm")}>Şimdi senkronize et</button>
+            </form>
+          ) : null}
+        </div>
+      );
+    }
+    if (p === "META_LEAD_ADS" || p === "WHATSAPP") {
       return (
         <p className="mt-1 text-xs text-muted">
           Webhook adresi: <code className="rounded bg-surface-2 px-1 font-mono">{appUrl}/api/v1/webhooks/meta</code> · doğrulama anahtarı: <code className="font-mono">META_VERIFY_TOKEN</code>
@@ -179,6 +231,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
     <>
       <PageHeader title="Entegrasyonlar / Aktarım günlüğü" description="Dış kaynaklardan veri alımı, yeniden deneme ve kalıcı hata kuyruğu. Hesabı bağlanmamış kanal “aktif” gösterilmez; durum yalnız gerçek API yanıtı ya da imzası doğrulanmış olaydan gelir." />
       {googleMsg ? <p className={`mb-4 rounded-lg border px-4 py-3 text-sm ${sp.google === "hata" ? "border-danger/40 text-danger" : "border-line"}`} role="status">{googleMsg}</p> : null}
+      {igMsg ? <p className={`mb-4 rounded-lg border px-4 py-3 text-sm ${sp.ig?.startsWith("tamam") || sp.ig === "mesgul" ? "border-line" : "border-danger/40 text-danger"}`} role="status">{igMsg}</p> : null}
       {siteMsg ? <p className={`mb-4 rounded-lg border px-4 py-3 text-sm ${sp.site?.startsWith("tamam") ? "border-line" : "border-danger/40 text-danger"}`} role="status">{siteMsg}</p> : null}
       {waMsg ? <p className={`mb-4 rounded-lg border px-4 py-3 text-sm ${sp.wa === "sira" ? "border-line" : "border-danger/40 text-danger"}`} role="status">{waMsg}</p> : null}
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">

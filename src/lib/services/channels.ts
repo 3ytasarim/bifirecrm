@@ -75,7 +75,7 @@ export async function processLeadgen(eventId: string) {
 
 // ───────────────────────────── Gelen mesajlar (WhatsApp + Instagram) ─────────────────────────────
 
-type Inbound = {
+export type Inbound = {
   channel: MessageChannel;
   threadId: string;
   displayName: string | null;
@@ -116,7 +116,24 @@ async function resolveContact(t: Prisma.TransactionClient, conv: { id: string; c
   return contactId;
 }
 
-async function recordInbound(m: Inbound) {
+/**
+ * Gelen/giden mesajı yazışmaya ekler (webhook, geçmiş aktarımı ve Instagram API senkronu ORTAK yolu).
+ * Tekillik: (yazışma, sağlayıcı mesaj kimliği). Webhook ile API senkronu aynı mesajı aynı anda yazarsa veritabanı
+ * tekilliği (P2002) ikinci yazımı reddeder → "tekrar" sayılır, hata değildir.
+ */
+export async function recordInbound(m: Inbound): Promise<{ conversationId: string | null; duplicate: boolean }> {
+  try {
+    return await recordInboundTx(m);
+  } catch (e) {
+    if ((e as { code?: string }).code === "P2002") return { conversationId: null, duplicate: true };
+    throw e;
+  }
+}
+
+/** Instagram: aynı yön + aynı metin + ±2 sn içinde kayıtlı mesaj varsa (kimlik biçimi farklı gelse bile) tekrar sayılır. */
+const NEAR_DUPLICATE_MS = 2000;
+
+async function recordInboundTx(m: Inbound) {
   return prisma.$transaction(async (t) => {
     const conv = await t.conversation.upsert({
       where: { channel_externalThreadId: { channel: m.channel, externalThreadId: m.threadId } },
@@ -125,6 +142,18 @@ async function recordInbound(m: Inbound) {
     });
     const exists = await t.message.findUnique({ where: { conversationId_externalMessageId: { conversationId: conv.id, externalMessageId: m.externalMessageId } }, select: { id: true } });
     if (exists) return { conversationId: conv.id, duplicate: true };
+    if (m.channel === "INSTAGRAM") {
+      const near = await t.message.findFirst({
+        where: {
+          conversationId: conv.id,
+          direction: m.outbound ? "OUTBOUND" : "INBOUND",
+          body: m.text,
+          occurredAt: { gte: new Date(m.occurredAt.getTime() - NEAR_DUPLICATE_MS), lte: new Date(m.occurredAt.getTime() + NEAR_DUPLICATE_MS) },
+        },
+        select: { id: true },
+      });
+      if (near) return { conversationId: conv.id, duplicate: true };
+    }
     await t.message.create({
       data: { conversationId: conv.id, direction: m.outbound ? "OUTBOUND" : "INBOUND", externalMessageId: m.externalMessageId, type: m.kind, body: m.text, status: m.outbound ? "SENT" : "RECEIVED", occurredAt: m.occurredAt },
     });
@@ -195,11 +224,22 @@ export async function processWhatsappHistory(eventId: string) {
   return { messages: p.messages?.length ?? 0, added };
 }
 
+/**
+ * İşletmeye ait Instagram kimlikleri: .env hesap kimliği + API senkronunun öğrendiği mesajlaşma kimlikleri
+ * (config.igSync.self.ids). Webhook'ta hesap kimliği yerine mesajlaşma kimliği gelirse olay yok sayılmaz.
+ */
+export async function instagramBusinessIds(): Promise<string[]> {
+  const acc = env().INSTAGRAM_ACCOUNT_ID;
+  const c = await prisma.integrationConnection.findUnique({ where: { provider: "INSTAGRAM_DM" }, select: { config: true } }).catch(() => null);
+  const learned = ((c?.config as { igSync?: { self?: { ids?: unknown } } } | null)?.igSync?.self?.ids ?? []) as unknown[];
+  return [...new Set([...(acc ? [acc] : []), ...learned.filter((x): x is string => typeof x === "string")])];
+}
+
 export async function processInstagramMessage(eventId: string) {
   const ev = await loadEvent(eventId);
   const p = ev.payload as unknown as InstagramMessagePayload;
-  const own = env().INSTAGRAM_ACCOUNT_ID;
-  if (own && p.accountId !== own) {
+  const own = await instagramBusinessIds();
+  if (own.length && !own.includes(p.accountId)) {
     await eventDone(ev.id); // başka bir hesaba ait olay
     return { conversationId: null, duplicate: false, ignored: true };
   }

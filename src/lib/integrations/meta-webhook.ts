@@ -37,10 +37,13 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 const clip = (s: string | null) => (s ? s.slice(0, MAX_TEXT) : null);
+/** Zaman damgası saniye ya da milisaniye gelebilir (panel test bildirimi saniye gönderir). */
+const msTimestamp = (n: number | null) => (n === null ? Date.now() : n < 1e12 ? n * 1000 : n);
 /** Kimlikler URL/anahtar olarak kullanılır: yalnız güvenli karakterler, makul uzunluk. */
 const safeId = (v: unknown): string | null => {
   const s = str(v);
-  return s && /^[A-Za-z0-9_.:=+\-/]{1,200}$/.test(s) ? s : null;
+  // Instagram mesaj kimlikleri (mid) 150+ karakter olabilir.
+  return s && /^[A-Za-z0-9_.:=+\-/]{1,512}$/.test(s) ? s : null;
 };
 
 function whatsappSummary(m: Obj): { kind: string; text: string | null } {
@@ -152,7 +155,10 @@ export function parseMetaWebhook(body: unknown, opts: { whatsappPhoneNumberId?: 
 
     // ── Instagram mesajları (Instagram API / Messenger Platform)
     if (object === "instagram") {
-      for (const mRaw of arr(entry.messaging)) {
+      // İki biçim: entry.messaging[] (Messenger Platform) ve entry.changes[{field:"messages", value}] (Instagram API,
+      // panel test bildirimleri). İkisinde de öğe { sender, recipient, timestamp, message } yapısındadır.
+      const items = [...arr(entry.messaging), ...arr(entry.changes).filter((c) => str(obj(c)?.field) === "messages").map((c) => obj(c)?.value)];
+      for (const mRaw of items) {
         const m = obj(mRaw);
         const msg = obj(m?.message);
         const mid = safeId(msg?.mid);
@@ -165,7 +171,7 @@ export function parseMetaWebhook(body: unknown, opts: { whatsappPhoneNumberId?: 
         if (!igUserId || !accountId) continue;
         const attachments = arr(msg.attachments).map((a) => str(obj(a)?.type) ?? "file");
         const text = clip(str(msg.text) ?? (attachments.length ? `[${attachments.map((t) => ({ image: "Görsel", video: "Video", audio: "Ses kaydı", share: "Paylaşım", story_mention: "Hikâye bahsi", ig_reel: "Reels" })[t] ?? "Ek").join(", ")}]` : null));
-        const payload: InstagramMessagePayload = { mid, accountId, igUserId, fromBusiness, text, kind: str(msg.text) ? "text" : attachments[0] ?? "unsupported", timestamp: num(m.timestamp) ?? Date.now() };
+        const payload: InstagramMessagePayload = { mid, accountId, igUserId, fromBusiness, text, kind: str(msg.text) ? "text" : attachments[0] ?? "unsupported", timestamp: msTimestamp(num(m.timestamp)) };
         out.push({ provider: "INSTAGRAM_DM", externalEventId: `ig:${mid}`, eventType: fromBusiness ? "message.echo" : "message", jobType: "instagram.message", payload });
       }
     }

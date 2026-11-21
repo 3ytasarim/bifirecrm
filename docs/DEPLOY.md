@@ -71,6 +71,12 @@ Gizli değerler yalnız sunucu `.env`'ine yazılır; her adımdan sonra `pm2 res
 2. **Webhook:** Callback URL `https://crm.bifiresomine.com/api/v1/webhooks/meta`, verify token aynı değer. Abonelikler: Page → `leadgen`; Instagram → `messages`; WhatsApp Business Account → `messages`, `message_template_status_update`.
 3. **Lead Ads:** sayfaya erişimli System User token'ı (`leads_retrieval`, `pages_manage_metadata`, `pages_show_list`) → `META_ACCESS_TOKEN`; uygulamayı sayfaya abone et. Meta'nın "Lead Ads Testing Tool"u ile bir test lead'i gönder → CRM › Talepler'de bir kez görünmeli.
 4. **Instagram DM:** Instagram profesyonel hesap kimliği → `INSTAGRAM_ACCOUNT_ID` (`instagram_manage_messages`). Test hesabından DM → CRM › Mesajlar.
+   - **API senkronu (webhook yedeği):** worker dakikada bir `GET /{INSTAGRAM_ACCOUNT_ID}/conversations?platform=instagram` ile görüşmeleri, her birinin son 20 mesajını okur (`META_ACCESS_TOKEN`). Webhook ile aynı mesaj tek kayıt olur (mesaj kimliği). Durum `integration_connections.config.igSync` içinde; migration gerekmez. Kilit DB'de: pm2 worker ile cron'daki `worker --once` aynı anda çalışsa da tek senkron yürür.
+   - Kontrol (salt okunur, yalnız sayılar): `npx tsx --conditions=react-server scripts/instagram-sync.ts --check` → `fields.*` sayıları, `outbound/inbound`, `businessIdDiffersFromAccountId`.
+   - Elle tek tur: `... scripts/instagram-sync.ts --apply` ya da CRM › Entegrasyonlar › Instagram › "Şimdi senkronize et". Durum: `... scripts/instagram-sync.ts` (argümansız).
+   - İlk turda 24 saatten eski mesajlar sessiz eklenir (bildirim/talep açılmaz). Meta, mesaj ayrıntısını görüşme başına yalnız son 20 mesaj için verir.
+   - Hız sınırı / ağ hatası → 1 → 60 dk geri çekilme; token/izin hatası → bağlantı "Hata" + yönetici bildirimi. Mesajlar hiçbir hatada silinmez.
+   - CRM'den Instagram'a yanıt gönderme YOK (ayrı geliştirme); yanıtlar Instagram uygulamasından verilir ve senkronla CRM'e düşer.
 5. **WhatsApp — doğrudan Meta (ayrı numara, `WHATSAPP_PROVIDER=meta`):** numarayı WhatsApp Business hesabına ekle ve doğrula; `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`, kalıcı System User token'ı (`whatsapp_business_messaging`, `whatsapp_business_management`) → `WHATSAPP_ACCESS_TOKEN`. Şablonları Meta'da oluştur/onaylat → CRM › Entegrasyonlar › "Meta'dan senkronize et". Test numarasından yaz → yazışma görünmeli; onaylı UTILITY şablonla yanıt gönder → durum "İletildi/Okundu".
 5b. **WhatsApp — 360dialog / coexistence (mevcut WhatsApp Business uygulaması numarası, `WHATSAPP_PROVIDER=360dialog`):**
    1. Telefondaki WhatsApp Business uygulaması güncel olmalı (2.24.17+). 360dialog'a kaydol; bağlantıyı işletme hesabının sahibi/yöneticisi kendi Facebook hesabıyla yapar (Embedded Signup, "mevcut WhatsApp Business uygulamasını bağla"), telefonda QR onaylanır. Numara uygulamadan SİLİNMEZ.
@@ -82,16 +88,6 @@ Gizli değerler yalnız sunucu `.env`'ine yazılır; her adımdan sonra `pm2 res
 6. **Google Calendar:** Google Cloud'da OAuth istemcisi (Web), yetkili yönlendirme adresi `https://crm.bifiresomine.com/api/v1/oauth/google/callback`, kapsam yalnız `calendar.events` → `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. CRM › Entegrasyonlar › "Google ile bağlan". Bir randevu oluştur/değiştir/iptal et → takvimde tek etkinlik olarak izle.
 7. **Kabul:** aynı test olayını Meta'dan "yeniden gönder" → CRM'de çift kayıt yok; token'ı iptal et → Entegrasyonlar'da "Hata" + bildirim; onaysız şablon gönderilemiyor.
 8. Geri alma: ilgili `.env` anahtarlarını boşalt + restart → kanal "Yapılandırılmadı", webhook 503 (Meta yeniden dener; olay kaybolmaz, kısa süre içinde açılırsa işlenir). Google için Entegrasyonlar › "Bağlantıyı kaldır" (token Google'da da iptal edilir).
-
-### Meta webhook 401 (invalid_signature) tanılaması — GEÇİCİ
-İmza doğrulanamayan her POST için web sürecinin loguna tek satır `meta-webhook-signature-diagnostic` JSON yazılır (süreç başına en fazla 200). İstek yine 401 ile reddedilir; doğrulama kapatılmaz. Sır, token, imza, gövde/mesaj içeriği ve kimlikler loglanmaz.
-- Oku: `pm2 logs bifire-crm --lines 200 --nostream | grep meta-webhook-signature-diagnostic | tail -3`
-- `header.present/formatOk` false → istek Meta'dan gelmiyor ya da başlık yolda (nginx) siliniyor.
-- `body.contentLengthMatches` false ya da `hasNonAscii` true → gövde yolda değişiyor.
-- `secret.length ≠ 32` / `looksLikeMetaAppSecret` false / `hasOuterWhitespace` / `hasQuotes` → `.env`'deki değer biçimce hatalı.
-- `runtimeValueFromEnvFile` false → çalışan değer `.env` dosyasından değil, pm2'nin sakladığı ortamdan ya da `export`'tan geliyor. Önce `.env`'deki satırı doğrulayın, sonra `pm2 delete bifire-crm && pm2 start deploy/ecosystem.config.cjs --only bifire-crm && pm2 save`.
-- Hepsi doğru görünüp hâlâ 401 ise: `.env`'deki değer, webhook'un bağlı olduğu Meta uygulamasının **App settings › Basic › App Secret** değeri değildir (başka uygulama, sıfırlanmış sır ya da Instagram › API setup sayfasındaki "Instagram app secret" yapıştırılmış). `body.object` / `fields` hangi abonelikten geldiğini gösterir.
-- Kaldırma: `src/lib/integrations/meta-signature-diagnostics.ts` + route'taki tek çağrı silinir; davranış değişmez.
 
 ## Kontrol listesi (canlı sonrası)
 - [ ] `/api/health` 200, `X-Robots-Tag: noindex`, HSTS başlığı

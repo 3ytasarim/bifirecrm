@@ -76,7 +76,7 @@ async function main() {
     prisma.integrationConnection.deleteMany({
       where: {
         provider: { in: ["META_LEAD_ADS", "WHATSAPP", "INSTAGRAM_DM", "GOOGLE_CALENDAR"] },
-        OR: [{ lastError: { contains: "QA sahte" } }, { config: { path: ["verifiedName"], equals: "QA Bifire" } }, { config: { path: ["accountEmail"], string_ends_with: "@example.test" } }],
+        OR: [{ lastError: { contains: "QA sahte" } }, { config: { path: ["verifiedName"], equals: "QA Bifire" } }, { config: { path: ["accountEmail"], string_ends_with: "@example.test" } }, { config: { path: ["igSync", "self", "username"], equals: "qa_bifire" } }],
       },
     }),
     prisma.internalNotification.deleteMany({ where: { OR: [{ link: { in: notifLinks } }, { body: { contains: "QA sahte" } }] } }),

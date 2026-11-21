@@ -5,6 +5,7 @@
  *  - integration_jobs kuyruğunu işler (retry / dead-letter) — işleyiciler: src/lib/jobs/handlers.ts.
  *  - Dakikada bir görev hatırlatma / gecikme / eskalasyon taraması + bildirimlerin e-posta kopyası (SMTP tanımlıysa).
  *  - 2 dakikada bir site formlarını çekme (WEBSITE_PULL_URL tanımlıysa; src/lib/integrations/website-pull.ts).
+ *  - Dakikada bir Instagram DM senkronu (Conversations API; webhook'un yedeği; DB kilidiyle tek kopya çalışır).
  *  - Saatte bir kanal sağlık kontrolü (Meta / WhatsApp / Google anahtarları gerçek çağrıyla denenir).
  */
 import "dotenv/config";
@@ -14,6 +15,7 @@ import { runReminderScan } from "@/lib/jobs/reminders";
 import { sendPendingNotificationEmails } from "@/lib/jobs/notification-mail";
 import { handlers, processBatch } from "@/lib/jobs/handlers";
 import { pullWebsiteRequests } from "@/lib/integrations/website-pull";
+import { syncInstagramConversations } from "@/lib/services/instagram-sync";
 
 const WORKER_ID = `${hostname()}:${process.pid}`;
 let stopping = false;
@@ -45,12 +47,24 @@ async function notificationEmails() {
   if (r.sent || r.copies || r.error) console.log(`[worker] e-posta bildirimi: gönderildi=${r.sent} kopya=${r.copies}${r.error ? ` hata=${r.error}` : ""}`);
 }
 
+/** Instagram DM senkronu. Yalnız sayılar loglanır (içerik/kimlik/token yok). */
+async function instagramSync() {
+  try {
+    const r = await syncInstagramConversations({ owner: WORKER_ID });
+    if (!r.enabled || r.skipped) return;
+    if (r.added || r.error) console.log(`[worker] instagram: görüşme=${r.conversations} yeni=${r.added} tekrar=${r.duplicates}${r.error ? ` hata=${r.error}` : ""}`);
+  } catch (e) {
+    console.error("[worker] instagram senkron hatası:", e instanceof Error ? e.message.slice(0, 200) : "bilinmeyen");
+  }
+}
+
 async function main() {
   console.log(`[worker] başladı ${WORKER_ID}`);
   if (process.argv.includes("--once")) {
     const r = await runReminderScan();
     await pruneNonces();
     await websitePull();
+    await instagramSync();
     const n = await processBatch(WORKER_ID, 20);
     await notificationEmails();
     console.log(`[worker] tek tur: hatırlatma=${r.reminded} gecikme=${r.overdue} eskalasyon=${r.escalated} iş=${n}`);
@@ -68,6 +82,7 @@ async function main() {
         const r = await runReminderScan();
         if (r.reminded || r.escalated) console.log(`[worker] hatırlatma=${r.reminded} gecikme=${r.overdue} eskalasyon=${r.escalated}`);
         await notificationEmails();
+        await instagramSync();
       }
       if (Date.now() - lastPull > 120_000) {
         lastPull = Date.now();
