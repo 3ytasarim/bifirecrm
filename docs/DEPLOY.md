@@ -83,6 +83,16 @@ Gizli değerler yalnız sunucu `.env`'ine yazılır; her adımdan sonra `pm2 res
 7. **Kabul:** aynı test olayını Meta'dan "yeniden gönder" → CRM'de çift kayıt yok; token'ı iptal et → Entegrasyonlar'da "Hata" + bildirim; onaysız şablon gönderilemiyor.
 8. Geri alma: ilgili `.env` anahtarlarını boşalt + restart → kanal "Yapılandırılmadı", webhook 503 (Meta yeniden dener; olay kaybolmaz, kısa süre içinde açılırsa işlenir). Google için Entegrasyonlar › "Bağlantıyı kaldır" (token Google'da da iptal edilir).
 
+### Meta webhook 401 (invalid_signature) tanılaması — GEÇİCİ
+İmza doğrulanamayan her POST için web sürecinin loguna tek satır `meta-webhook-signature-diagnostic` JSON yazılır (süreç başına en fazla 200). İstek yine 401 ile reddedilir; doğrulama kapatılmaz. Sır, token, imza, gövde/mesaj içeriği ve kimlikler loglanmaz.
+- Oku: `pm2 logs bifire-crm --lines 200 --nostream | grep meta-webhook-signature-diagnostic | tail -3`
+- `header.present/formatOk` false → istek Meta'dan gelmiyor ya da başlık yolda (nginx) siliniyor.
+- `body.contentLengthMatches` false ya da `hasNonAscii` true → gövde yolda değişiyor.
+- `secret.length ≠ 32` / `looksLikeMetaAppSecret` false / `hasOuterWhitespace` / `hasQuotes` → `.env`'deki değer biçimce hatalı.
+- `runtimeValueFromEnvFile` false → çalışan değer `.env` dosyasından değil, pm2'nin sakladığı ortamdan ya da `export`'tan geliyor. Önce `.env`'deki satırı doğrulayın, sonra `pm2 delete bifire-crm && pm2 start deploy/ecosystem.config.cjs --only bifire-crm && pm2 save`.
+- Hepsi doğru görünüp hâlâ 401 ise: `.env`'deki değer, webhook'un bağlı olduğu Meta uygulamasının **App settings › Basic › App Secret** değeri değildir (başka uygulama, sıfırlanmış sır ya da Instagram › API setup sayfasındaki "Instagram app secret" yapıştırılmış). `body.object` / `fields` hangi abonelikten geldiğini gösterir.
+- Kaldırma: `src/lib/integrations/meta-signature-diagnostics.ts` + route'taki tek çağrı silinir; davranış değişmez.
+
 ## Kontrol listesi (canlı sonrası)
 - [ ] `/api/health` 200, `X-Robots-Tag: noindex`, HSTS başlığı
 - [ ] Davet → şifre → giriş → MFA kurulumu

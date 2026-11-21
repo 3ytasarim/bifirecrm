@@ -6,6 +6,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { apiError, clientIpHash } from "@/lib/integrations/website-request";
 import { metaWebhookSecrets } from "@/lib/integrations/channels-config";
 import { verifyMetaSignature } from "@/lib/integrations/meta-signature";
+import { logSignatureFailure } from "@/lib/integrations/meta-signature-diagnostics";
 import { parseMetaWebhook } from "@/lib/integrations/meta-webhook";
 import { storeChannelEvents } from "@/lib/integrations/store-events";
 
@@ -51,7 +52,11 @@ export async function POST(req: NextRequest) {
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return fail(413, "payload_too_large", "İstek gövdesi çok büyük.");
   const rawBody = await req.text();
   if (Buffer.byteLength(rawBody) > MAX_BODY_BYTES) return fail(413, "payload_too_large", "İstek gövdesi çok büyük.");
-  if (!verifyMetaSignature(secrets.appSecret, rawBody, req.headers.get("x-hub-signature-256"))) return fail(401, "invalid_signature", "İmza doğrulanamadı.");
+  if (!verifyMetaSignature(secrets.appSecret, rawBody, req.headers.get("x-hub-signature-256"))) {
+    // GEÇİCİ tanılama: sır/imza/içerik loglanmaz; istek yine reddedilir.
+    logSignatureFailure({ rawBody, headers: req.headers, secret: secrets.appSecret, runtimeSecret: process.env.META_APP_SECRET, instagramAccountId: env().INSTAGRAM_ACCOUNT_ID });
+    return fail(401, "invalid_signature", "İmza doğrulanamadı.");
+  }
 
   let body: unknown;
   try {
